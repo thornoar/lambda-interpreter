@@ -1,0 +1,29 @@
+cabal-version:      3.0
+name:               lambda-interpreter
+
+version:            0.1.0.0
+license:            MIT
+license-file:       LICENSE
+author:             Roman Maksimovich
+maintainer:         r.a.maksimovich@gmail.com
+-- copyright:
+category:           Math
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall
+
+executable lambda-interpreter
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    Lambda
+    exposed-modules:  Main
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.17.2.1,
+        containers ^>=0.6.2.1,
+        haskeline ^>=0.8.2.1
+    hs-source-dirs:   app
+    default-language: Haskell2010

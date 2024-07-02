@@ -1,0 +1,231 @@
+-- $conversion
+-- ┌─────────────────────────────────────────┐
+-- │ Converting formal and informal notation │
+-- └─────────────────────────────────────────┘
+
+-- parseFormal' :: String -> Maybe Lambda
+-- parseFormal' str = parseFormal (preprocess str) >>= checkCondition isValid
+
+-- _toInformal' :: String -> IO ()
+-- _toInformal' = putStrLn . unparse . fromJust . parseFormal'
+
+-- parseFormal :: String -> Maybe Lambda
+-- parseFormal [] = Nothing
+-- parseFormal str
+--   | (head str == 'v') && (tail str == replicate n '\'') = Just (Var n)
+--   where
+--     n = length str - 1
+-- parseFormal ('(' : '\\' : 'v' : rest) = maybeAbst n (parseFormal $ init $ drop n rest)
+--   where
+--     n = prefixLength rest (repeat '\'')
+-- parseFormal ('(' : rest)
+--   | length objects /= 2 = Nothing
+--   | otherwise = maybeAppl (parseFormal $ head objects) (parseFormal $ last objects)
+--   where
+--     objects = getCombinedTerms $ init rest
+-- parseFormal _ = Nothing
+
+-- (&&&) :: (a -> Bool) -> (a -> Bool) -> (a -> Bool)
+-- (&&&) f g x = f x && g x
+
+-- (...) :: (Monad m) => (b -> m c) -> (a -> m b) -> a -> m c
+-- (...) g f x = f x >>= g
+--
+-- infixr 9 ...
+
+-- preprocess ('\\':var:',':' ':rest) = preprocess $ '\\' : var : ',' : rest
+-- preprocess ('\\':var:'.':' ':' ': rest) = preprocess $ '\\' : var : '.' : ' ' : rest
+-- preprocess ('\\':var:'.':' ': rest) = '\\' : var : '.' : ' ' : preprocess rest
+
+-- parse (' ' : rest) = parse rest
+-- parse ('\\' : var : ',' : ' ' : rest) = parse ('\\' : var : ',' : rest)
+-- parse ('\\' : var : '.' : ' ' : rest) = parse ('\\' : var : '.' : rest)
+
+-- maybeAbst :: Variable -> Maybe Lambda -> Maybe Lambda
+-- maybeAbst _ Nothing = Nothing
+-- maybeAbst n (Just l) = Just $ Abst n l
+--
+-- maybeAppl :: Maybe Lambda -> Maybe Lambda -> Maybe Lambda
+-- maybeAppl Nothing _ = Nothing
+-- maybeAppl _ Nothing = Nothing
+-- maybeAppl (Just l1) (Just l2) = Just $ Appl l1 l2
+
+-- toFormal :: String -> String
+-- toFormal [] = []
+-- toFormal [var]
+--   | var `elem` varSet' =
+--       let order = fromJust $ elemIndex var varSet'
+--        in varSet !! order
+--   | otherwise = [var]
+-- toFormal ('\\' : var : '.' : ' ' : rest) = "(\\" ++ toFormal [var] ++ toFormal rest ++ ")"
+-- toFormal ('\\' : var : ',' : rest) = "(\\" ++ toFormal [var] ++ toFormal ('\\' : rest) ++ ")"
+-- toFormal expr
+--   | null objects = []
+--   | length objects == 1 =
+--       let object = head objects
+--           braced = ('(' == head object) && (')' == last object)
+--           object' = if braced then (tail . init) object else object
+--        in toFormal object'
+--   | otherwise =
+--       let operator = join $ init objects
+--           operand = last objects
+--        in "(" ++ toFormal operator ++ toFormal operand ++ ")"
+--   where
+--     objects = getCombinedTerms expr
+
+-- [TODO]
+-- fromFormal :: String -> String
+-- fromFormal = id
+
+-- $maybe
+-- ┌─────────────────────────────────────┐
+-- │ Adding failing conditions via Maybe │
+-- └─────────────────────────────────────┘
+
+-- io :: Maybe String -> IO ()
+-- io Nothing = putStrLn "error: invalid input"
+-- io (Just str) = putStrLn str
+
+-- (+++) :: (Eq a) => Maybe [a] -> Maybe [a] -> Maybe [a]
+-- (+++) s1 s2
+--   | isNothing s1 || isNothing s2 = Nothing
+--   | otherwise = Just (fromJust s1 ++ fromJust s2)
+
+-- toFormalMaybe :: String -> Maybe String
+-- toFormalMaybe [] = Nothing
+-- toFormalMaybe [var]
+--   | var `elem` varSet' =
+--       let order = fromJust $ elemIndex var varSet'
+--        in Just (varSet !! order)
+--   | otherwise = Nothing
+-- toFormalMaybe ('\\' : var : '.' : ' ' : rest) =
+--   Just "(\\" +++ toFormalMaybe [var] +++ toFormalMaybe rest +++ Just ")"
+-- toFormalMaybe ('\\' : var : ',' : rest) =
+--   Just "(\\" +++ toFormalMaybe [var] +++ toFormalMaybe ('\\' : rest) +++ Just ")"
+-- toFormalMaybe expr
+--   | null objects = Just []
+--   | length objects > 1 = Just "(" +++ toFormalMaybe operator +++ toFormalMaybe operand +++ Just ")"
+--   | otherwise =
+--       let object = head objects
+--           braced = ('(' == head object) && (')' == last object)
+--           object' = if braced then tail $ init object else object
+--        in Just "(" +++ toFormalMaybe object' +++ Just ")"
+--   where
+--     objects = getCombinedTerms expr
+--     operator = join $ init objects
+--     operand = last objects
+
+-- [TODO]
+-- fromFormalMaybe :: String -> Maybe String
+-- fromFormalMaybe = Just
+
+-- apply :: Lambda -> String -> Maybe Lambda
+-- apply l s = reduce . Appl l <$> parse' s
+--
+-- _apply :: Lambda -> String -> IO ()
+-- _apply l str = io unparse' $ apply l str
+-- -- _apply l = putStrLn . unparse' . apply l
+--
+-- _toFormal' :: String -> IO ()
+-- _toFormal' = io unparseFormal . parse'
+-- -- _toFormal' = putStrLn . unparseFormal . parse'
+--
+-- _toInformal' :: String -> IO ()
+-- _toInformal' = io unparse . parse'
+-- -- _toInformal' = putStrLn . unparse' . parse'
+--
+-- _print :: String -> IO ()
+-- _print = io unparse' . parse'
+--
+-- _substitute :: String -> String -> String -> IO ()
+-- _substitute s1 s2 s3 = io unparse' $ sub l1 l2 l3
+--   where
+--     l1 = parse s1
+--     l2 = parse s2
+--     l3 = parse s3
+--     sub :: Maybe Lambda -> Maybe Lambda -> Maybe Lambda -> Maybe Lambda
+--     sub l1' (Just (Var n)) l3' = raise (`substitute` n) l1' l3'
+--     sub _ _ _ = Nothing
+--
+-- _reduce :: String -> IO ()
+-- _reduce = io (unparse' . reduce) . parse'
+--
+-- _reduce' :: Lambda -> IO ()
+-- _reduce' = io (unparse' . reduce) . Just
+--
+-- _reduceTimes :: Int -> String -> IO ()
+-- _reduceTimes n = io (unparse' . reduceTimes n) . parse'
+--
+-- _reduceTimes' :: Int -> Lambda -> IO ()
+-- _reduceTimes' n = io (unparse' . reduceTimes n) . Just
+--
+-- _equiv :: String -> String -> IO ()
+-- _equiv s1 s2 = print $ raise equiv (parse' s1) (parse' s2)
+--
+-- _equiv' :: String -> String -> IO ()
+-- _equiv' s1 s2 = print $ raise equiv' (parse' s1) (parse' s2)
+
+
+
+    -- Just "" -> loop mode
+    -- Just (':':'r':'s':' ':rest) -> evalOnce STEPS rest >> loop mode
+    -- Just (':':'r':' ':rest) -> evalOnce REDUCE rest >> loop mode
+    -- Just (':':'p':' ':rest) -> evalOnce PRINT rest >> loop mode
+    -- Just (':':'e':'q':' ':rest) -> evalOnce EQUIV rest >> loop mode
+    -- Just (':':'s':' ':rest) -> evalOnce SHOW rest >> loop mode
+    -- Just input -> evalOnce mode input >> loop mode
+
+
+-- pipeMaybe :: (Monad m) => (a -> m (Maybe b)) -> Maybe a -> m (Maybe b)
+-- pipeMaybe f Nothing = return Nothing
+-- pipeMaybe f (Just a) = f a
+
+
+-- evalOnce :: Mode -> String -> InputT IO ()
+-- evalOnce PRINT = io (("| " ++) . color "34" . unparse') . parse'
+-- evalOnce REDUCE = io (("| " ++) . color "34" . unparse' . reduce) . parse'
+-- evalOnce STEPS = io' . parse'
+--   where
+--     io' :: Maybe Lambda -> InputT IO ()
+--     io' Nothing = outputStrLn $ color "1;31" "error:" ++ " Incorrect syntax."
+--     io' (Just l) = showSteps l
+--     showSteps :: Lambda -> InputT IO ()
+--     showSteps l
+--       | found = do
+--         outputStr $ "| " ++ color "34" (unparse' l')
+--         _ <- getInputLine ""
+--         showSteps l'
+--       | otherwise = return ()
+--       where
+--         (l', found) = reduceStep l
+-- evalOnce EQUIV = showEquiv
+--   where
+--     io' :: Maybe Bool -> InputT IO ()
+--     io' Nothing = outputStrLn $ color "1;31" "error:" ++ " Incorrect syntax."
+--     io' (Just b) = outputStrLn . ("| " ++) . color "33" . show $ b
+--     showEquiv :: String -> InputT IO ()
+--     showEquiv str1 = do
+--       let ml1 = parse' str1
+--       str2 <- getInputLine $ "  (" ++ color "37" "AND" ++ "): "
+--       let ml2 = str2 >>= parse'
+--       io' $ raise equiv' ml1 ml2
+-- evalOnce SHOW = io (("| " ++) . color "35" . show) . parse'
+
+-- withThree :: (String -> String -> String -> Maybe String) -> (String, String) -> String -> InputT IO (Maybe String)
+-- withThree f (prompt1, prompt2) str1 = do
+--   mstr2 <- getInputLine $ "  (" ++ color "33" prompt1 ++ "): "
+--   case mstr2 of
+--     Nothing -> printLn (Just "Aborted.")
+--     Just [] -> printLn Nothing
+--     Just str2 -> do
+--       mstr2' <- eval RETURN str2
+--       case mstr2' of
+--         Nothing -> return Nothing
+--         Just str2' -> do
+--           mstr3 <- getInputLine $ "  (" ++ color "33" prompt2 ++ "): "
+--           case mstr3 of
+--             Nothing -> printLn (Just "Aborted.")
+--             Just [] -> printLn Nothing
+--             Just str3 -> do
+--               mstr3' <- eval RETURN str3
+--               printLn $ mstr3' >>= f str1 str2'
