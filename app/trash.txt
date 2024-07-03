@@ -1,3 +1,59 @@
+
+
+
+(\x.x(x(x(x(\t.t)))))((\x,y.yx)(\x,y.x(x(x(xy)))))
+
+
+
+-- unparseWrap :: Lambda -> String
+-- unparseWrap l
+--   | equiv l combinatorI = "I"
+--   | equiv l combinatorK = "K"
+--   | equiv l combinatorK' = "K*"
+--   | equiv l combinatorS = "S"
+--   | equiv l combinatorY = "Y"
+--   | equiv l combinatorOmega = "O"
+-- unparseWrap (Var n)
+--   | n < length varSet = [varSet !! n]
+--   | otherwise = varSetFormal !! n
+-- unparseWrap (Abst n (Abst m l)) = "\\" ++ unparseWrap (Var n) ++ "," ++ (tail . unparseWrap) (Abst m l)
+-- unparseWrap (Abst n l) = "\\" ++ unparseWrap (Var n) ++ ". " ++ wrapAbst unparseWrap l
+-- unparseWrap (Appl l1 l2) = wrapAbst unparseWrap l1 ++ wrapNotVar unparseWrap l2
+
+
+-- unparseWithoutSpaces :: Lambda -> String
+-- unparseWithoutSpaces (Var n)
+--   | n < length varSet = [varSet !! n]
+--   | otherwise = varSetFormal !! n
+-- unparseWithoutSpaces (Abst n (Abst m l)) =
+--   "\\" ++ unparseWithoutSpaces (Var n) ++ "," ++ (tail . unparseWithoutSpaces) (Abst m l)
+-- unparseWithoutSpaces (Abst n l) =
+--   "\\" ++ unparseWithoutSpaces (Var n) ++ "." ++ wrapAbst unparseWithoutSpaces l
+-- unparseWithoutSpaces (Appl l1 l2) =
+--   wrapAbst unparseWithoutSpaces l1 ++ wrapNotVar unparseWithoutSpaces l2
+-- unparseWithoutSpaces = removeSpaces . unparse
+--   where
+--     removeSpaces :: String -> String
+--     removeSpaces [] = []
+--     removeSpaces (' ':rest) = removeSpaces rest
+--     removeSpaces (char:rest) = char : removeSpaces rest
+
+
+
+-- unparse' :: Lambda -> String
+-- unparse' = replaceChar ('.',". ") . unparse
+--
+-- unparseWrap' :: Lambda -> String
+-- unparseWrap' = replaceChar ('.',". ") . unparse
+
+
+
+
+
+
+
+
+
 -- $conversion
 -- ┌─────────────────────────────────────────┐
 -- │ Converting formal and informal notation │

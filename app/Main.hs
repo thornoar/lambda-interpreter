@@ -10,8 +10,12 @@ import Text.Read (readMaybe)
 -- │ Command definitions │
 -- └─────────────────────┘
 
-data Mode =
-  RETURN | REPEAT | PRINT | REDUCE | SUBS | STEPS | CONGR | EQUIV | SHOW | READ | TOFORMAL | TOINFORMAL | FORMAT | LET | WHERE | ASSIGN
+data Mode = RETURN | REPEAT
+  | WRAP | EXPAND | SUBS | REDUCE | REDUCELIMIT | STEPS
+  | CONGR | EQUIV
+  | SHOW | READ
+  | TOFORMAL | TOINFORMAL
+  | LET | WHERE | ASSIGN
   deriving (Read, Show)
 
 type Action = InputT IO (Maybe String)
@@ -27,9 +31,11 @@ commandList :: [(String, String, Mode, String)]
 commandList = [
     ("rt", "return", RETURN, "swallows input and returns it"),
     ("rp", "repeat", REPEAT, "repeats input as-is"),
-    ("pr", "print", PRINT, "parses a given lambda expression and prints it"),
-    ("r", "reduce", REDUCE, "reduces a given lambda expression and prints it"),
+    ("wr", "print", WRAP, "prints a given lambda term, applying aliases"),
+    ("ex", "print", EXPAND, "expands given aliases into the standard lambda syntax"),
     ("sb", "subs", SUBS, "substitutes a given expression in place of a given variable"),
+    ("r", "reduce", REDUCE, "reduces a given lambda expression and prints it"),
+    ("rl", "reducelimit", REDUCELIMIT, "gives control over the depth of reduction"),
     ("rs", "steps", STEPS, "enters a step-by-step reduction process"),
     ("cr", "congr", CONGR, "prints whether two given expressions are congruent (with variable replacement)"),
     ("eq", "equiv", EQUIV, "prints whether two given expressions are reducible to the same one"),
@@ -37,7 +43,6 @@ commandList = [
     ("rd", "read", READ, "evaluates a given internal representation and prints it"),
     ("tf", "toformal", TOFORMAL, "converts to the formal notation"),
     ("ti", "toinformal", TOINFORMAL, "converts to the informal notation"),
-    ("fm", "format", FORMAT, "adjusts the bound variables to avoid collisions"),
     ("lt", "let", LET, "allows to set a binding, order (binding, expression)"),
     ("wh", "where", WHERE, "allows to set a binding, order (expression, binding)"),
     ("as", "assign", ASSIGN, "a three-step action similar to LET and WHERE, but allows piping into bindings")
@@ -100,7 +105,7 @@ promptLength :: Int
 promptLength = 16
 
 prompt :: Char -> String -> String
-prompt rep body = "(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m"
+prompt rep body = "\ESC[0m(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m"
   where n = promptLength - length body - 5
 
 getColoredInputLine :: String -> Action
@@ -158,15 +163,18 @@ withThree f readA readB readC showC (prt1, prt2) str1 = readA str1 >>== \a -> do
 evalOnce :: Mode -> String -> Action
 evalOnce RETURN = return . Just
 evalOnce REPEAT = printLn . Just
-evalOnce PRINT = printLn . fmap unparse' . parse'
-evalOnce REDUCE = printLn . fmap (unparse' . reduce) . parse'
-evalOnce SUBS = withThree substitute parse' getVar parse' unparse' ("VAR", "EXPR")
+evalOnce WRAP = printLn . fmap (unparse True True) . parse'
+evalOnce EXPAND = printLn . fmap (unparse False True) . parse'
+evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True True) ("VAR", "EXPR")
   where
     getVar :: String -> Maybe Int
-    getVar str = case mexpr of
-      Just (Var n) -> Just n
-      _ -> Nothing
-      where mexpr = parse' str
+    getVar str =
+      let mexpr = parse' str
+       in case mexpr of
+          Just (Var n) -> Just n
+          _ -> Nothing
+evalOnce REDUCE = printLn . fmap (unparse True True . reduce) . parse'
+evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parse' readMaybe (unparse True True) "LIMIT"
 evalOnce STEPS = print' . parse'
   where
     print' :: Maybe Lambda -> Action
@@ -174,7 +182,7 @@ evalOnce STEPS = print' . parse'
     print' (Just l) = showSteps l
     showSteps :: Lambda -> Action
     showSteps l = do
-      let lstr = Just $ unparse' l
+      let lstr = Just $ unparse True True l
       _ <- printGeneral outputStr lstr
       input <- getColoredInputLine ""
       case input of
@@ -187,10 +195,9 @@ evalOnce STEPS = print' . parse'
 evalOnce CONGR = withTwo equiv parse' parse' show "AND"
 evalOnce EQUIV = withTwo equiv' parse' parse' show "AND"
 evalOnce SHOW = printLn . fmap show . parse'
-evalOnce READ = printLn . fmap unparse' . readMaybe
+evalOnce READ = printLn . fmap (unparse True True) . readMaybe
 evalOnce TOFORMAL = printLn . fmap unparseFormal . parse'
-evalOnce TOINFORMAL = printLn . fmap unparse' . parse'
-evalOnce FORMAT = printLn . fmap (unparse . adjustBoundVars) . parse'
+evalOnce TOINFORMAL = printLn . fmap (unparse True True) . parse'
 evalOnce LET = withTwo replaceChar parseSubs Just id "IN"
 evalOnce WHERE = withTwo (flip replaceChar) Just parseSubs id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Just extractChar Just id ("ASSIGN TO", "IN")
@@ -228,8 +235,8 @@ handleCommand str f = do
     then return Nothing
     else f (commandMap ! cmd) str'
 
-pipe :: Mode -> Mode -> String -> Action
-pipe basemode curmode str = do
+pipeCommand :: Mode -> Mode -> String -> Action
+pipeCommand basemode curmode str = do
   val <- eval curmode str
   val >>== evalOnce basemode
 
@@ -237,31 +244,46 @@ eval :: Mode -> String -> Action
 eval mode str = case str of
   [] -> return Nothing
   (' ':rest) -> eval mode rest
-  ('<':rest) -> handleCommand rest (pipe mode)
+  ('<':rest) -> handleCommand rest (pipeCommand mode)
+  ('|':rest) -> handleCommand rest (flip pipeCommand $ mode)
   ('@':rest) -> handleCommand rest eval
   input -> evalOnce mode input
 
-loop :: Mode -> InputT IO ()
-loop mode = do
+loop :: Mode -> String -> InputT IO ()
+loop mode mem = do
   minput <- getColoredInputLine $ prompt '#' (show mode)
   case minput of
     Nothing -> return ()
-    Just [] -> loop mode
-    Just "help" -> helpAction >> loop mode
+    Just [] -> loop mode mem
+    Just "help" -> helpAction >> loop mode mem
     Just "quit" -> return ()
+    Just "exit" -> return ()
     Just "q" -> return ()
     Just ('>':rest) ->
       if member rest commandMap
-      then loop (commandMap ! rest)
+      then loop (commandMap ! rest) mem
       else do
         printError "Unknown command"
-        loop mode
+        loop mode mem
+    Just ('^':rest) ->
+      if member rest commandMap
+      then do
+        mmem' <- eval (commandMap ! rest) mem
+        case mmem' of
+          Nothing -> do
+            printError "Exception while processing input"
+            loop mode mem
+          Just mem' -> loop mode mem'
+      else do
+        printError "Unknown command"
+        loop mode mem
     Just input -> do
-      val <- eval mode input
-      case val of
-        Nothing -> printError "Exception while processing input"
-        _ -> return ()
-      loop mode
+      mmem' <- eval mode input
+      case mmem' of
+        Nothing -> do
+          printError "Exception while processing input"
+          loop mode mem
+        Just mem' -> loop mode mem'
 
 -- ┌───────────────────┐
 -- │ Building the REPL │
@@ -322,4 +344,4 @@ main = do
   runInputT settings $ case opts of
     Options { errorOpt = True } -> printError "Unrecognized option"
     Options { helpOpt = True } -> helpAction
-    _ -> loop $ modeOpt opts
+    _ -> loop (modeOpt opts) ""

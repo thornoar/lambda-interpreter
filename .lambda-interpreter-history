@@ -1,0 +1,100 @@
+exit
+200
+@rl c_4(cExp c_2)c_1
+80
+@rl c_4(cExp c_2)c_1
+40
+@rl c_4(cExp c_2)c_1
+20
+@rl c_4(cExp c_2)c_1
+@r c_3(cExp c_2)c_1
+@r c_4(cExp c_2)c_1
+@r c_3(cExp c_2)c_1
+@r c_3(cExp c_5)c_1
+15
+c_3(cExp c_5)c_1
+>rl
+SIII
+SIII
+K*K
+KKI
+\x.x
+>r
+<wr \x.x
+>ex
+|ex \x. x
+|ex \x.x
+|ex I
+>wr
+>pr
+I
+y
+|ex xyz
+|ex
+>subs
+I
+y
+xyz
+>sb
+O_5
+O_3
+O
+K*
+S
+K
+I
+>ex
+\  x, y, u .    xu (  yu)   
+\  x, y .    y   
+\  x, y .    x   
+\  x.    x   
+\x.    x   
+\x.    x
+\x. x
+\x.x
+>wr
+1234fgasd
+fds
+sdd
+>rp
+\x.x
+fdsa
+asdf
+>rt
+>ex
+\x,y.x
+\x.x
+>wr
+I
+>ex
+asdfgfew
+asdf
+I
+(\x.x)(\x.x)
+(\x.x)
+II
+>wr
+x(\x.x)
+>fm
+x(\x.x)
+K
+I
+I
+>fm
+>ti
+@ti I
+@tf I
+I
+O
+(\x,y.y)(\x,y.x)
+\x,y.y
+\x,y.x
+\x.xy
+\x.x
+>pr
+^rs
+^pr
+O_5
+O_5
+o_5
+o_3
