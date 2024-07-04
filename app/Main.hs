@@ -64,10 +64,10 @@ splitByFirstSpace [] = Nothing
 splitByFirstSpace (' ':_) = Just 0
 splitByFirstSpace (_:rest) = (+ 1) <$> splitByFirstSpace rest
 
-calibrateLengthPost :: Int -> Char -> String -> String
-calibrateLengthPost n rep str
+calibrateLengthPost :: Int -> String -> String
+calibrateLengthPost n str
   | len > n = str
-  | otherwise = str ++ replicate (n - len) rep
+  | otherwise = str ++ replicate (n - len) ' '
   where
     len = length str
 
@@ -313,28 +313,28 @@ helpAction = do
     l3 = 22
     getCommandInfo :: (String, String, Mode, String) -> InputT IO ()
     getCommandInfo (k1,k2,m,desc) = outputStrLn $
-      calibrateLengthPost l1 ' ' ("  *" ++ k1 ++ ",") ++
-      calibrateLengthPost l2 ' ' ("*" ++ k2) ++
-      calibrateLengthPost l3 ' ' ("the " ++ show m ++ " mode ") ++
+      calibrateLengthPost l1 ("  *" ++ k1 ++ ",") ++
+      calibrateLengthPost l2 ("*" ++ k2) ++
+      calibrateLengthPost l3 ("the " ++ show m ++ " mode ") ++
       desc ++ "."
     getFlagInfo :: (String, String, String) -> InputT IO ()
     getFlagInfo (s,l,desc) = outputStrLn $ 
-      calibrateLengthPost l1 ' ' s ++
-      calibrateLengthPost l2 ' ' l ++
+      calibrateLengthPost l1 s ++
+      calibrateLengthPost l2 l ++
       desc ++ "."
-  outputStrLn "lambda-interpreter --- a MODE line utility for parsing and processing lambda terms."
+  outputStrLn "lambda-interpreter: a command line utility for parsing and processing lambda terms."
   outputStrLn "\nflags:"
   getFlagInfo ("  -h,", "--help", "helps")
   getFlagInfo ("  -m,", "--MODE", "sets the initial MODE")
   outputStrLn "\nREPL usage: [>MODE | <MODE | @MODE | ^MODE] [LAMBDA]"
   outputStrLn "\nmode prefixes:"
-  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  >MODE"
+  outputStrLn $ calibrateLengthPost (l1+l2) "  >MODE"
     ++ "enter the specified mode."
-  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  <MODE ARG"
+  outputStrLn $ calibrateLengthPost (l1+l2) "  <MODE ARG"
     ++ "run the specified mode with the given argument and pipe the result into the current MODE."
-  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  @MODE ARG"
+  outputStrLn $ calibrateLengthPost (l1+l2) "  @MODE ARG"
     ++ "run the specified mode with the given argument."
-  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  ^MODE"
+  outputStrLn $ calibrateLengthPost (l1+l2) "  ^MODE"
     ++ "run the specified mode with the result of the previous evaluation."
   outputStrLn "\nmodes:"
   mapM_ getCommandInfo commandList
