@@ -1,3 +1,12 @@
+2
+@rl O
+1
+@rl O_3
+10
+@rl O_3
+O_3
+O
+>rs
 O
 >rs
 K*IK
@@ -89,12 +98,3 @@ y
 |ex xyz
 |ex
 >subs
-I
-y
-xyz
->sb
-O_5
-O_3
-O
-K*
-S
