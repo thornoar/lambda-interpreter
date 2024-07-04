@@ -3,7 +3,7 @@ module Lambda where
 import Control.Monad
 import Data.Char (isAlpha, isDigit)
 import Data.List (elemIndex, nub)
-import Data.Maybe
+import Data.Maybe (fromJust)
 
 maximum' :: (Ord a, Num a) => [a] -> a
 maximum' [] = 0
@@ -270,7 +270,11 @@ unparse wrap _ l
 unparse _ _ (Var n)
   | n < length varSet = [varSet !! n]
   | otherwise = varSetFormal !! n
-unparse wrap space (Abst n (Abst m l)) = "\\" ++ unparse wrap space (Var n) ++ "," ++ (tail . unparse wrap space) (Abst m l)
+unparse wrap space (Abst n (Abst m l)) = "\\" ++ unparse wrap space (Var n) ++ shorten (". " ++ unparse wrap space (Abst m l))
+  where
+    shorten :: String -> String
+    shorten ('.':' ':'\\':rest) = ',':rest
+    shorten str = str
 unparse wrap space (Abst n l) =
   "\\" ++ unparse wrap space (Var n) ++ (if space then ". " else ".") ++ wrapAbst (unparse wrap space) l
 unparse wrap space (Appl l1 l2) = wrapAbst (unparse wrap space) l1 ++ wrapNotVar (unparse wrap space) l2
