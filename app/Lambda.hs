@@ -261,12 +261,12 @@ wrapNotVar f l = "(" ++ f l ++ ")"
 
 unparse :: Bool -> Bool -> Lambda -> String
 unparse wrap _ l
-  | wrap && equiv l combinatorI = "I"
-  | wrap && equiv l combinatorK = "K"
-  | wrap && equiv l combinatorK' = "K*"
-  | wrap && equiv l combinatorS = "S"
-  | wrap && equiv l combinatorY = "Y"
-  | wrap && equiv l combinatorOmega = "O"
+  | wrap && congr l combinatorI = "I"
+  | wrap && congr l combinatorK = "K"
+  | wrap && congr l combinatorK' = "K*"
+  | wrap && congr l combinatorS = "S"
+  | wrap && congr l combinatorY = "Y"
+  | wrap && congr l combinatorOmega = "O"
 unparse _ _ (Var n)
   | n < length varSet = [varSet !! n]
   | otherwise = varSetFormal !! n
@@ -323,23 +323,29 @@ parseJust' = fromJust . parse'
 -- └───────────────────────┘
 
 substitute :: Lambda -> Variable -> Lambda -> Lambda
-substitute (Var n) m l
-  | n == m = l
-  | otherwise = Var n
-substitute (Abst n l1) m l2
-  | n == m = Abst n l1
-  | n `notElem` bnd2 = Abst n (substitute l1 m l2)
-  | otherwise = Abst n (substitute l1 m l2')
+substitute l from to = substitute' from to $ moveBoundVars l (totalVarSet to)
   where
-    bnd2 = boundVarSet l2
-    l2' = changeBoundVar l2 n (1 + maximum bnd2)
-substitute (Appl l1 l2) m l = Appl (substitute l1 m l) (substitute l2 m l)
+    substitute' :: Variable -> Lambda -> Lambda -> Lambda
+    substitute' m l' (Var n)
+      | n == m = l'
+      | otherwise = Var n
+    substitute' m l2' (Abst n l1')
+      | n == m = Abst n l1'
+      | otherwise = Abst n (substitute' m l2' l1')
+    substitute' m l' (Appl l1' l2') = Appl (substitute' m l' l1') (substitute' m l' l2')
 
 changeBoundVar :: Lambda -> Variable -> Variable -> Lambda
 changeBoundVar (Var n) _ _ = Var n
 changeBoundVar (Abst n l) m1 m2
-  | n == m1 = Abst m2 $ substitute l m1 (Var m2)
+  | n == m1 = Abst m2 $ substituteVar l m1 m2
   | otherwise = Abst n $ changeBoundVar l m1 m2
+    where
+      substituteVar :: Lambda -> Variable -> Variable -> Lambda
+      substituteVar (Var n') from to
+        | n' == from = Var to
+        | otherwise = Var n'
+      substituteVar (Abst n' l') from to = Abst n' $ substituteVar l' from to
+      substituteVar (Appl l1' l2') from to = Appl (substituteVar l1' from to) (substituteVar l2' from to)
 changeBoundVar (Appl l1 l2) m1 m2 = Appl (changeBoundVar l1 m1 m2) (changeBoundVar l2 m1 m2)
 
 moveBoundVars :: Lambda -> [Variable] -> Lambda
@@ -408,17 +414,17 @@ reduceTimes n l
 -- │ Labda query │
 -- └─────────────┘
 
-equiv :: Lambda -> Lambda -> Bool
-equiv (Var n1) (Var n2)
+congr :: Lambda -> Lambda -> Bool
+congr (Var n1) (Var n2)
   | n1 == n2 = True
   | otherwise = False
-equiv (Appl p1 p2) (Appl q1 q2) = equiv p1 q1 && equiv p2 q2
-equiv (Abst n1 l1) (Abst n2 l2)
-  | n1 == n2 = equiv l1 l2
-  | otherwise = equiv l1 (substitute l2 n2 (Var n1))
-equiv _ _ = False
+congr (Appl p1 p2) (Appl q1 q2) = congr p1 q1 && congr p2 q2
+congr (Abst n1 l1) (Abst n2 l2)
+  | n1 == n2 = congr l1 l2
+  | otherwise = congr l1 (substitute l2 n2 (Var n1))
+congr _ _ = False
 
-equiv' :: Lambda -> Lambda -> Bool
-equiv' l1 l2 = equiv (reduce l1) (reduce l2)
+equiv :: Lambda -> Lambda -> Bool
+equiv l1 l2 = congr (reduce l1) (reduce l2)
 
 -- inconsistent :: Lambda -> Lambda -> Maybe

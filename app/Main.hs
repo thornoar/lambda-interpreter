@@ -182,7 +182,7 @@ evalOnce STEPS = print' . parse'
     print' (Just l) = showSteps l
     showSteps :: Lambda -> Action
     showSteps l = do
-      let lstr = Just $ unparse True True l
+      let lstr = Just $ unparse False True l
       _ <- printGeneral outputStr lstr
       input <- getColoredInputLine ""
       case input of
@@ -192,8 +192,8 @@ evalOnce STEPS = print' . parse'
           if found
           then showSteps l'
           else return lstr
-evalOnce CONGR = withTwo equiv parse' parse' show "AND"
-evalOnce EQUIV = withTwo equiv' parse' parse' show "AND"
+evalOnce CONGR = withTwo congr parse' parse' show "AND"
+evalOnce EQUIV = withTwo equiv parse' parse' show "AND"
 evalOnce SHOW = printLn . fmap show . parse'
 evalOnce READ = printLn . fmap (unparse True True) . readMaybe
 evalOnce TOFORMAL = printLn . fmap unparseFormal . parse'
@@ -245,7 +245,7 @@ eval mode str = case str of
   [] -> return Nothing
   (' ':rest) -> eval mode rest
   ('<':rest) -> handleCommand rest (pipeCommand mode)
-  ('|':rest) -> handleCommand rest (flip pipeCommand $ mode)
+  ('|':rest) -> handleCommand rest (flip pipeCommand mode)
   ('@':rest) -> handleCommand rest eval
   input -> evalOnce mode input
 
@@ -320,14 +320,23 @@ helpAction = do
     getFlagInfo :: (String, String, String) -> InputT IO ()
     getFlagInfo (s,l,desc) = outputStrLn $ 
       calibrateLengthPost l1 ' ' s ++
-      calibrateLengthPost (l2+l3) ' ' l ++
+      calibrateLengthPost l2 ' ' l ++
       desc ++ "."
-  outputStrLn "\nlambda-interpreter --- a command line utility for parsing and processing lambda terms."
+  outputStrLn "lambda-interpreter --- a MODE line utility for parsing and processing lambda terms."
   outputStrLn "\nflags:"
-  getFlagInfo ("-h", "--help", "helps")
-  getFlagInfo ("-m", "--mode", "sets the initial mode")
-  outputStrLn "\nREPL usage: [>command | <command | @command] [LAMBDA]"
-  outputStrLn "commands:"
+  getFlagInfo ("  -h,", "--help", "helps")
+  getFlagInfo ("  -m,", "--MODE", "sets the initial MODE")
+  outputStrLn "\nREPL usage: [>MODE | <MODE | @MODE | ^MODE] [LAMBDA]"
+  outputStrLn "\nmode prefixes:"
+  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  >MODE"
+    ++ "enter the specified mode."
+  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  <MODE ARG"
+    ++ "run the specified mode with the given argument and pipe the result into the current MODE."
+  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  @MODE ARG"
+    ++ "run the specified mode with the given argument."
+  outputStrLn $ calibrateLengthPost (l1+l2) ' ' "  ^MODE"
+    ++ "run the specified mode with the result of the previous evaluation."
+  outputStrLn "\nmodes:"
   mapM_ getCommandInfo commandList
 
 settings :: Settings IO

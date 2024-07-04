@@ -48,7 +48,11 @@
 
 
 
+    -- | n `notElem` tv2 = Abst n (substitute' l1' m l2')
 
+      -- where
+      --   tv2 = boundVarSet l2'
+      --   l2' = changeBoundVar l2' n (1 + maximum tv2)
 
 
 
