@@ -113,6 +113,9 @@ combinatorY = parseJust "\\f.(\\x.f(xx))(\\x.f(xx))"
 combinatorOmega :: Lambda
 combinatorOmega = parseJust "(\\x.xx)(\\x.xx)"
 
+combinatorNeg :: Lambda
+combinatorNeg = parseJust "\\x.x(\\u,w.w)(\\u,w.u)"
+
 omegaSmall :: Int -> Lambda
 omegaSmall n = parseJust $ "\\x." ++ replicate n 'x'
 
@@ -196,6 +199,7 @@ preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ prepr
 preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
 preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
 preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
+preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
 ----------
 preprocess (' ':rest) = preprocess rest
 preprocess (char:str) = char : preprocess str
