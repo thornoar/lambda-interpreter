@@ -3,7 +3,8 @@ module Lambda where
 import Control.Monad
 import Data.Char (isAlpha, isDigit)
 import Data.List (elemIndex, nub)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import Text.Read (readMaybe)
 
 maximum' :: (Ord a, Num a) => [a] -> a
 maximum' [] = 0
@@ -95,17 +96,17 @@ combinatorI :: Lambda
 combinatorI = parseJust "\\x.x"
 
 combinatorK :: Lambda
-combinatorK = parseJust "\\x,y.x"
+combinatorK = parseJust "\\x.\\y.x"
 true :: Lambda
 true = combinatorK
 
 combinatorK' :: Lambda
-combinatorK' = parseJust "\\x,y.y"
+combinatorK' = parseJust "\\x.\\y.y"
 false :: Lambda
 false = combinatorK'
 
 combinatorS :: Lambda
-combinatorS = parseJust "\\x,y,z.xz(yz)"
+combinatorS = parseJust "\\x.\\y.\\z.xz(yz)"
 
 combinatorY :: Lambda
 combinatorY = parseJust "\\f.(\\x.f(xx))(\\x.f(xx))"
@@ -114,7 +115,7 @@ combinatorOmega :: Lambda
 combinatorOmega = parseJust "(\\x.xx)(\\x.xx)"
 
 combinatorNeg :: Lambda
-combinatorNeg = parseJust "\\x.x(\\u,w.w)(\\u,w.u)"
+combinatorNeg = parseJust "\\x.x(\\u.\\w.w)(\\u.\\w.u)"
 
 omegaSmall :: Int -> Lambda
 omegaSmall n = parseJust $ "\\x." ++ replicate n 'x'
@@ -126,22 +127,22 @@ church :: Int -> Lambda
 church 0 = adjustBoundVars $ Abst 0 combinatorI
 church n = adjustBoundVars $ Abst 0 $ Abst 1 $ Appl (Var 0) $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)
 zeroChurch :: Lambda
-zeroChurch = parseJust "\\x.x((\\y,z.y)(\\y,z.z))(\\y,z.y)"
+zeroChurch = parseJust "\\x.x((\\y.\\z.y)(\\y.\\z.z))(\\y.\\z.y)"
 succChurch :: Lambda
-succChurch = parseJust "\\f,x,y.fx(xy)"
+succChurch = parseJust "\\f.\\x.\\y.fx(xy)"
 prevChurch :: Lambda
-prevChurch = parseJust "\\x,y,z.x(\\p,q.q(py))((\\u,w.u)z)(\\t.t)"
+prevChurch = parseJust "\\x.\\y.\\z.x(\\p.\\q.q(py))((\\u.\\w.u)z)(\\t.t)"
 addChurch :: Lambda
-addChurch = parseJust "\\x,y,p,q.xp(ypq)"
+addChurch = parseJust "\\x.\\y.\\p.\\q.xp(ypq)"
 multChurch :: Lambda
-multChurch = parseJust "\\x,y,z.x(yz)"
+multChurch = parseJust "\\x.\\y.\\z.x(yz)"
 expChurch :: Lambda
-expChurch = parseJust "\\x,y.yx"
+expChurch = parseJust "\\x.\\y.yx"
 
 pair :: Lambda -> Lambda -> Lambda
 pair l1 l2 = Abst n (Appl (Appl (Var n) l1) l2)
   where
-    n = 1 + max (maximum' $ freeVarSet l1) (maximum' $ freeVarSet l2)
+    n = 1 + max (maximum' $ totalVarSet l1) (maximum' $ totalVarSet l2)
 
 barend :: Int -> Lambda
 barend 0 = combinatorI
@@ -159,22 +160,23 @@ prevBarend = parseJust "\\f.f(\\x,y.y)"
 
 preprocess :: String -> String
 preprocess [] = []
+preprocess (',':rest) = '.' : '\\' : preprocess rest
 ----------
-preprocess ('c':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroChurch ++ ")" ++ preprocess rest
-preprocess ('c':'S':'u':'c':'c':rest) = "(" ++ unparse False False succChurch ++ ")" ++ preprocess rest
-preprocess ('c':'P':'r':'e':'v':rest) = "(" ++ unparse False False prevChurch ++ ")" ++ preprocess rest
-preprocess ('c':'A':'d':'d':rest) = "(" ++ unparse False False addChurch ++ ")" ++ preprocess rest
-preprocess ('c':'M':'u':'l':'t':rest) = "(" ++ unparse False False multChurch ++ ")" ++ preprocess rest
-preprocess ('c':'E':'x':'p':rest) = "(" ++ unparse False False expChurch ++ ")" ++ preprocess rest
+preprocess ('c':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroChurch ++ ")" ++ preprocess rest
+preprocess ('c':'S':'u':'c':'c':rest) = "(" ++ unparse False succChurch ++ ")" ++ preprocess rest
+preprocess ('c':'P':'r':'e':'v':rest) = "(" ++ unparse False prevChurch ++ ")" ++ preprocess rest
+preprocess ('c':'A':'d':'d':rest) = "(" ++ unparse False addChurch ++ ")" ++ preprocess rest
+preprocess ('c':'M':'u':'l':'t':rest) = "(" ++ unparse False multChurch ++ ")" ++ preprocess rest
+preprocess ('c':'E':'x':'p':rest) = "(" ++ unparse False expChurch ++ ")" ++ preprocess rest
 ----------
-preprocess ('b':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroBarend ++ ")" ++ preprocess rest
-preprocess ('b':'S':'u':'c':'c':rest) = "(" ++ unparse False False succBarend ++ ")" ++ preprocess rest
-preprocess ('b':'P':'r':'e':'v':rest) = "(" ++ unparse False False prevBarend ++ ")" ++ preprocess rest
+preprocess ('b':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroBarend ++ ")" ++ preprocess rest
+preprocess ('b':'S':'u':'c':'c':rest) = "(" ++ unparse False succBarend ++ ")" ++ preprocess rest
+preprocess ('b':'P':'r':'e':'v':rest) = "(" ++ unparse False prevBarend ++ ")" ++ preprocess rest
 preprocess (char:'_':rest)
-  | char == 'c' = "(" ++ unparse False False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'b' = "(" ++ unparse False False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'o' = "(" ++ unparse False False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'O' = "(" ++ unparse False False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'c' = "(" ++ unparse False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'b' = "(" ++ unparse False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'o' = "(" ++ unparse False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'O' = "(" ++ unparse False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
   | otherwise = preprocess rest
   where
     findNumber :: String -> String
@@ -193,13 +195,13 @@ preprocess ('i':'f':' ':rest) = '(' : preprocess rest
 preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
 preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
 ----------
-preprocess ('I' : rest) = "(" ++ unparse False False combinatorI ++ ")" ++ preprocess rest
-preprocess ('K' : '*' : rest) = "(" ++ unparse False False combinatorK' ++ ")" ++ preprocess rest
-preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ preprocess rest
-preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
-preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
-preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
-preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
+preprocess ('I' : rest) = "(" ++ unparse False combinatorI ++ ")" ++ preprocess rest
+preprocess ('K' : '*' : rest) = "(" ++ unparse False combinatorK' ++ ")" ++ preprocess rest
+preprocess ('K' : rest) = "(" ++ unparse False combinatorK ++ ")" ++ preprocess rest
+preprocess ('S' : rest) = "(" ++ unparse False combinatorS ++ ")" ++ preprocess rest
+preprocess ('Y' : rest) = "(" ++ unparse False combinatorY ++ ")" ++ preprocess rest
+preprocess ('O' : rest) = "(" ++ unparse False combinatorOmega ++ ")" ++ preprocess rest
+preprocess ('N' : rest) = "(" ++ unparse False combinatorNeg ++ ")" ++ preprocess rest
 ----------
 preprocess (' ':rest) = preprocess rest
 preprocess (char:str) = char : preprocess str
@@ -207,8 +209,11 @@ preprocess (char:str) = char : preprocess str
 parse :: String -> Maybe Lambda
 parse [] = Nothing
 parse ('v' : rest)
+  | isJust num =  fmap Var num
   | allPrimes rest = Just $ Var $ length rest
   where
+    num :: Maybe Int
+    num = readMaybe rest
     allPrimes :: String -> Bool
     allPrimes [] = True
     allPrimes ('\'':rest') = allPrimes rest'
@@ -216,19 +221,22 @@ parse ('v' : rest)
 parse [var]
   | var `elem` varSet = Just $ Var (fromJust $ elemIndex var varSet)
   | otherwise = Nothing
-parse ('\\' : var : rest)
-  | null rest = Nothing
-  | var == 'v' =
-    let n = prefixLength rest (repeat '\'')
-        tempstr = drop n rest
-        rest' = if null tempstr then [] else case head tempstr of
-            ',' -> '\\' : tail tempstr
-            '.' -> tail tempstr
-            _ -> tempstr
-     in raise Abst (Just n) (parse rest')
-  | head rest == ',' = raise Abst (elemIndex var varSet) (parse $ '\\' : tail rest)
-  | head rest == '.' = raise Abst (elemIndex var varSet) (parse $ tail rest)
-  | otherwise = Nothing
+parse ('\\' : 'v' : char : rest)
+  | isDigit char =
+    let f :: String -> String -> (Maybe String, Maybe String)
+        f _ [] = (Nothing, Nothing)
+        f acc ('.':rest'') = (Just acc, Just rest'')
+        f acc (char':rest'') = f (acc ++ [char']) rest''
+        (numStr, rest') = f [] (char:rest)
+        var = numStr >>= readMaybe
+     in raise Abst var (rest' >>= parse')
+  | char == '\'' = 
+    let f :: Int -> String -> Maybe Lambda
+        f n ('\'' : rest') = f (n+1) rest'
+        f n ('.' : rest') = raise Abst (Just n) (parse' rest')
+        f _ _ = Nothing
+     in f 1 rest
+parse ('\\' : var : '.' : rest) = raise Abst (elemIndex var varSet) (parse $ rest)
 parse str
   | length objects > 1 = raise Appl (parse $ join (init objects)) (parse $ last objects)
   | head object == '(' = parse (init . tail $ object)
@@ -263,25 +271,59 @@ wrapNotVar :: (Lambda -> String) -> Lambda -> String
 wrapNotVar f (Var n) = f (Var n)
 wrapNotVar f l = "(" ++ f l ++ ")"
 
-unparse :: Bool -> Bool -> Lambda -> String
-unparse wrap _ l
-  | wrap && congr l combinatorI = "I"
-  | wrap && congr l combinatorK = "K"
-  | wrap && congr l combinatorK' = "K*"
-  | wrap && congr l combinatorS = "S"
-  | wrap && congr l combinatorY = "Y"
-  | wrap && congr l combinatorOmega = "O"
-unparse _ _ (Var n)
+recognizeChurch :: Lambda -> Maybe Int
+recognizeChurch l
+  | congr l (Abst 0 (Abst 1 (Var 1))) = Just 0
+  | otherwise = case l of
+    Abst n1 (Abst n2 (Appl (Var n3) (Appl (Appl l' (Var n4)) (Var n5)))) ->
+      if n1 == n3 && n1 == n4 && n2 == n5
+      then (1+) <$> recognizeChurch l'
+      else Nothing
+    _ -> Nothing
+
+recognizeBarend :: Lambda -> Maybe Int
+recognizeBarend l
+  | congr l (Abst 0 (Var 0)) = Just 0
+  | otherwise = case l of
+    Abst n1 (Appl (Appl (Var n2) l1) l2) ->
+      if n1 == n2 && congr l1 combinatorK'
+      then (1+) <$> recognizeBarend l2
+      else Nothing
+    _ -> Nothing
+
+unparse :: Bool -> Lambda -> String
+unparse True l
+  | congr l combinatorI = "I"
+  | congr l combinatorK = "K"
+  | congr l combinatorK' = "K*"
+  | congr l combinatorS = "S"
+  | congr l combinatorY = "Y"
+  | congr l combinatorOmega = "O" 
+  | isChurch = "c_" ++ (show . fromJust $ theChurch)
+  | isBarend = "b_" ++ (show . fromJust $ theBarend)
+    where
+      theChurch = recognizeChurch l
+      isChurch = case theChurch of
+        Nothing -> False
+        Just _ -> True
+      theBarend = recognizeBarend l
+      isBarend = case theBarend of
+        Nothing -> False
+        Just _ -> True
+unparse sugar (Var n)
   | n < length varSet = [varSet !! n]
+  | sugar = 'v' : show n
   | otherwise = varSetFormal !! n
-unparse wrap space (Abst n (Abst m l)) = "\\" ++ unparse wrap space (Var n) ++ shorten (". " ++ unparse wrap space (Abst m l))
-  where
-    shorten :: String -> String
-    shorten ('.':' ':'\\':rest) = ',':rest
-    shorten str = str
-unparse wrap space (Abst n l) =
-  "\\" ++ unparse wrap space (Var n) ++ (if space then ". " else ".") ++ wrapAbst (unparse wrap space) l
-unparse wrap space (Appl l1 l2) = wrapAbst (unparse wrap space) l1 ++ wrapNotVar (unparse wrap space) l2
+unparse sugar (Abst n (Abst m l))
+  | sugar = "\\" ++ unparse True (Var n) ++ unparsedRest
+  | otherwise = "\\" ++ unparse False (Var n) ++ "." ++ unparse False (Abst m l)
+    where
+      unparsedRest = case unparse True (Abst m l) of
+        '\\' : str -> ',' : str
+        str -> '.' : str
+unparse sugar (Abst n l) =
+  "\\" ++ unparse sugar  (Var n) ++ (if sugar then ". " else ".") ++ wrapAbst (unparse sugar) l
+unparse sugar (Appl l1 l2) = wrapAbst (unparse sugar) l1 ++ wrapNotVar (unparse sugar) l2
 
 unparseFormal :: Lambda -> String
 unparseFormal (Var n) = varSetFormal !! n

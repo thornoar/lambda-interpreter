@@ -56,6 +56,22 @@
 
 
 
+      -- f n (',' : rest') = raise Abst (Just n) (parse' ('\\' : rest'))
+
+
+  -- | null rest = Nothing
+  -- | var == 'v' =
+  --   let 
+  --   let n = prefixLength rest (repeat '\'')
+  --       tempstr = drop n rest
+  --       rest' = if null tempstr then [] else case head tempstr of
+  --           ',' -> '\\' : tail tempstr
+  --           '.' -> tail tempstr
+  --           _ -> tempstr
+  --    in raise Abst (Just n) (parse rest')
+  -- | head rest == ',' = raise Abst (elemIndex var varSet) (parse $ '\\' : tail rest)
+  -- | head rest == '.' = raise Abst (elemIndex var varSet) (parse $ rest)
+  -- | otherwise = Nothing
 
 
 -- $conversion

@@ -11,7 +11,7 @@ import Text.Read (readMaybe)
 -- └─────────────────────┘
 
 data Mode = RETURN | REPEAT
-  | WRAP | EXPAND | SUBS | REDUCE | REDUCELIMIT | STEPS
+  | PRINT | EXPAND | SUBS | REDUCE | REDUCELIMIT | STEPS
   | CONGR | EQUIV
   | SHOW | READ
   | TOFORMAL | TOINFORMAL
@@ -31,8 +31,8 @@ commandList :: [(String, String, Mode, String)]
 commandList = [
     ("rt", "return", RETURN, "swallows input and returns it"),
     ("rp", "repeat", REPEAT, "repeats input as-is"),
-    ("wr", "print", WRAP, "prints a given lambda term, applying aliases"),
-    ("ex", "print", EXPAND, "expands given aliases into the standard lambda syntax"),
+    ("pr", "print", PRINT, "prints a given lambda term, applying aliases"),
+    ("ex", "expand", EXPAND, "expands given aliases into the standard lambda syntax"),
     ("sb", "subs", SUBS, "substitutes a given expression in place of a given variable"),
     ("r", "reduce", REDUCE, "reduces a given lambda expression and prints it"),
     ("rl", "reducelimit", REDUCELIMIT, "gives control over the depth of reduction"),
@@ -163,9 +163,9 @@ withThree f readA readB readC showC (prt1, prt2) str1 = readA str1 >>== \a -> do
 evalOnce :: Mode -> String -> Action
 evalOnce RETURN = return . Just
 evalOnce REPEAT = printLn . Just
-evalOnce WRAP = printLn . fmap (unparse True True) . parse'
-evalOnce EXPAND = printLn . fmap (unparse False True) . parse'
-evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True True) ("VAR", "EXPR")
+evalOnce PRINT = printLn . fmap (unparse True) . parse'
+evalOnce EXPAND = printLn . fmap (unparse False) . parse'
+evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True) ("VAR", "EXPR")
   where
     getVar :: String -> Maybe Int
     getVar str =
@@ -173,8 +173,8 @@ evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True True) ("
        in case mexpr of
           Just (Var n) -> Just n
           _ -> Nothing
-evalOnce REDUCE = printLn . fmap (unparse True True . reduce) . parse'
-evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parse' readMaybe (unparse True True) "LIMIT"
+evalOnce REDUCE = printLn . fmap (unparse True . reduce) . parse'
+evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parse' readMaybe (unparse True) "LIMIT"
 evalOnce STEPS = print' . parse'
   where
     print' :: Maybe Lambda -> Action
@@ -182,7 +182,7 @@ evalOnce STEPS = print' . parse'
     print' (Just l) = showSteps l
     showSteps :: Lambda -> Action
     showSteps l = do
-      let lstr = Just $ unparse False True l
+      let lstr = Just $ unparse False l
       _ <- printGeneral outputStr lstr
       input <- getColoredInputLine ""
       case input of
@@ -195,9 +195,9 @@ evalOnce STEPS = print' . parse'
 evalOnce CONGR = withTwo congr parse' parse' show "AND"
 evalOnce EQUIV = withTwo equiv parse' parse' show "AND"
 evalOnce SHOW = printLn . fmap show . parse'
-evalOnce READ = printLn . fmap (unparse True True) . readMaybe
+evalOnce READ = printLn . fmap (unparse True) . readMaybe
 evalOnce TOFORMAL = printLn . fmap unparseFormal . parse'
-evalOnce TOINFORMAL = printLn . fmap (unparse True True) . parse'
+evalOnce TOINFORMAL = printLn . fmap (unparse True) . parse'
 evalOnce LET = withTwo replaceChar parseSubs Just id "IN"
 evalOnce WHERE = withTwo (flip replaceChar) Just parseSubs id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Just extractChar Just id ("ASSIGN TO", "IN")
