@@ -3,7 +3,8 @@ module Main where
 import Lambda
 import System.Console.Haskeline
 import System.Environment (getArgs)
-import Data.Map (Map, empty, insert, member, notMember, (!))
+import Data.Map (Map, empty, insert, member, notMember, (!), elems)
+import qualified Data.Map as M
 import Text.Read (readMaybe)
 
 -- ┌─────────────────────┐
@@ -19,6 +20,7 @@ data Mode = RETURN | REPEAT
   deriving (Read, Show)
 
 type Action = InputT IO (Maybe String)
+type Bindings = Map Char String
 
 mapFromList :: (Ord a) => [(a, a, b, a)] -> Map a b
 mapFromList [] = empty
@@ -59,6 +61,10 @@ commandMap = mapFromList commandList
 (>>==) Nothing _ = return Nothing
 (>>==) (Just a) f = f a
 
+infixr 9 <.>
+(<.>) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
+(<.>) g f a b = g (f a b)
+
 splitByFirstSpace :: String -> Maybe Int
 splitByFirstSpace [] = Nothing
 splitByFirstSpace (' ':_) = Just 0
@@ -84,34 +90,41 @@ replaceChar (from, to) (char:rest)
   | char == from = "(" ++ to ++ ")" ++ replaceChar (from, to) rest
   | otherwise = char : replaceChar (from, to) rest
 
-parseSubs :: String -> Maybe (Char, String)
-parseSubs = parseSubs' . removeSpaces
-  where
-    removeSpaces :: String -> String
-    removeSpaces [] = []
-    removeSpaces (' ':rest) = removeSpaces rest
-    removeSpaces (char:rest) = char : removeSpaces rest
-    parseSubs' :: String -> Maybe (Char, String)
-    parseSubs' [] = Nothing
-    parseSubs' (char:rest)
-      | null rest = Nothing
-      | '=' /= head rest = Nothing
-      | otherwise = Just (char, tail rest)
+parseBinding :: String -> Maybe (Char, String)
+parseBinding [] = Nothing
+parseBinding (' ':rest) = parseBinding rest
+parseBinding (char:' ':rest) = parseBinding (char:rest)
+parseBinding (char:'=':' ':rest) = parseBinding (char:'=':rest)
+parseBinding (char:'=':rest)
+  | null rest = Nothing
+  | otherwise = Just (char, rest)
+parseBinding _ = Nothing
+      -- | '=' /= head rest = Nothing
+      -- | otherwise = Just (char, tail rest)
+
+useBindings :: Bindings -> String -> String
+useBindings _ [] = []
+useBindings bindings (char:rest)
+  | char `member` bindings = "(" ++ (bindings ! char) ++ ")" ++ useBindings bindings rest
+  | otherwise = char : useBindings bindings rest
+
+parseWithBindings' :: Bindings -> String -> Maybe Lambda
+parseWithBindings' bindings = parse' . useBindings bindings
 
 color :: String -> String -> String
-color typ str = "\ESC[" ++ typ ++ "m" ++ str ++ "\ESC[0m"
+color typ str = "\ESC[" ++ typ ++ "m" ++ str ++ "\ESC[0m" -- ]]
 
 promptLength :: Int
 promptLength = 16
 
-prompt :: Char -> String -> String
-prompt rep body = "\ESC[0m(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m"
+getPrompt :: Char -> String -> String
+getPrompt rep body = "\ESC[0m(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m" -- ]]
   where n = promptLength - length body - 5
 
 getColoredInputLine :: String -> Action
 getColoredInputLine pref = do
   res <- getInputLine pref
-  outputStr "\ESC[0m"
+  outputStr "\ESC[0m" -- ]
   return res
 
 -- ┌─────────────────────────────────┐
@@ -133,12 +146,13 @@ withTwo ::
   (String -> Maybe b) ->
   (c -> String) ->
   String ->
+  Bindings ->
   String ->
   Action
-withTwo f readA readB showC prt str1 = readA str1 >>== \a -> do
-  minput <- getColoredInputLine $ prompt ' ' prt
-  mstr2 <- minput >>== eval RETURN
-  let mb = mstr2 >>= readB
+withTwo f readA readB showC prompt bindings str1 = (readA . useBindings bindings) str1 >>== \a -> do
+  minput <- getColoredInputLine $ getPrompt ' ' prompt
+  mstr2 <- minput >>== eval RETURN bindings
+  let mb = mstr2 >>= (readB . useBindings bindings)
   mb >>== \b -> printLn $ Just $ showC $ f a b
 
 withThree ::
@@ -148,24 +162,32 @@ withThree ::
   (String -> Maybe c) ->
   (d -> String) ->
   (String, String) ->
+  Bindings ->
   String ->
   Action
-withThree f readA readB readC showC (prt1, prt2) str1 = readA str1 >>== \a -> do
-  minput2 <- getColoredInputLine $ prompt ' ' prt1
-  mstr2 <- minput2 >>== eval RETURN
-  let mb = mstr2 >>= readB
-  mb >>== \b -> do
-    minput3 <- getColoredInputLine $ prompt ' ' prt2
-    mstr3 <- minput3 >>== eval RETURN
-    let mc = mstr3 >>= readC
-    mc >>== \c -> printLn $ Just $ showC $ f a b c
+withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
+  (readA . useBindings bindings) str1 >>== \a -> do
+    minput2 <- getColoredInputLine $ getPrompt ' ' prompt1
+    mstr2 <- minput2 >>== eval RETURN bindings
+    let mb = mstr2 >>= (readB . useBindings bindings)
+    mb >>== \b -> do
+      minput3 <- getColoredInputLine $ getPrompt ' ' prompt2
+      mstr3 <- minput3 >>== eval RETURN bindings
+      let mc = mstr3 >>= (readC . useBindings bindings)
+      mc >>== \c -> printLn $ Just $ showC $ f a b c
 
-evalOnce :: Mode -> String -> Action
-evalOnce RETURN = return . Just
-evalOnce REPEAT = printLn . Just
-evalOnce PRINT = printLn . fmap (unparse True) . parse'
-evalOnce EXPAND = printLn . fmap (unparse False) . parse'
-evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True) ("VAR", "EXPR")
+evalOnce :: Mode -> Bindings -> String -> Action
+evalOnce RETURN = \_ -> return . Just
+evalOnce REPEAT = \_ -> printLn . Just
+evalOnce PRINT = (printLn . fmap (unparse True)) <.> parseWithBindings'
+evalOnce EXPAND = (printLn . fmap (unparse False)) <.> parseWithBindings'
+evalOnce SUBS = withThree
+  substitute
+  parse'
+  getVar
+  parse'
+  (unparse True)
+  ("VAR", "EXPR")
   where
     getVar :: String -> Maybe Int
     getVar str =
@@ -173,33 +195,38 @@ evalOnce SUBS = withThree substitute parse' getVar parse' (unparse True) ("VAR",
        in case mexpr of
           Just (Var n) -> Just n
           _ -> Nothing
-evalOnce REDUCE = printLn . fmap (unparse True . reduce) . parse'
-evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parse' readMaybe (unparse True) "LIMIT"
-evalOnce STEPS = print' . parse'
+evalOnce REDUCE = (printLn . fmap (unparse True . reduce)) <.> parseWithBindings'
+evalOnce REDUCELIMIT = withTwo
+  (flip $ reduceWithLimit 0)
+  parse'
+  readMaybe
+  (unparse True)
+  "LIMIT"
+evalOnce STEPS = print' <.> parseWithBindings'
   where
     print' :: Maybe Lambda -> Action
     print' Nothing = return Nothing
     print' (Just l) = showSteps l
     showSteps :: Lambda -> Action
     showSteps l = do
-      let lstr = Just $ unparse False l
-      _ <- printGeneral outputStr lstr
+      let lstr = unparse False l
+      _ <- printGeneral outputStr (Just lstr)
       input <- getColoredInputLine ""
       case input of
-        Nothing -> return lstr
+        Nothing -> return (Just lstr)
         _ -> do
           let (l', found) = reduceStep l
           if found
           then showSteps l'
-          else return lstr
+          else evalOnce PRINT empty lstr
 evalOnce CONGR = withTwo congr parse' parse' show "AND"
 evalOnce EQUIV = withTwo equiv parse' parse' show "AND"
-evalOnce SHOW = printLn . fmap show . parse'
-evalOnce READ = printLn . fmap (unparse True) . readMaybe
-evalOnce TOFORMAL = printLn . fmap unparseFormal . parse'
-evalOnce TOINFORMAL = printLn . fmap (unparse True) . parse'
-evalOnce LET = withTwo replaceChar parseSubs Just id "IN"
-evalOnce WHERE = withTwo (flip replaceChar) Just parseSubs id "WITH"
+evalOnce SHOW = (printLn . fmap show) <.> parseWithBindings'
+evalOnce READ = \_ -> printLn . fmap (unparse True) . readMaybe
+evalOnce TOFORMAL = (printLn . fmap unparseFormal) <.> parseWithBindings'
+evalOnce TOINFORMAL = (printLn . fmap (unparse True)) <.> parseWithBindings'
+evalOnce LET = withTwo replaceChar parseBinding Just id "IN"
+evalOnce WHERE = withTwo (flip replaceChar) Just parseBinding id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Just extractChar Just id ("ASSIGN TO", "IN")
   where
     extractChar :: String -> Maybe Char
@@ -225,65 +252,76 @@ printInputError = printError "Incorrect input"
 -- │ Command piping and mode changing │
 -- └──────────────────────────────────┘
 
-handleCommand :: String -> (Mode -> String -> Action) -> Action
-handleCommand str f = do
-  let mn = splitByFirstSpace str
+handleCommand :: String -> Bindings -> (Mode -> Bindings -> String -> Action) -> Action
+handleCommand input bindings f = do
+  let mn = splitByFirstSpace input
   mn >>== \n -> do
-    let cmd = take n str
-        str' = drop (n+1) str
-    if notMember cmd commandMap || null str'
+    let cmd = take n input
+        input' = drop (n+1) input
+    if notMember cmd commandMap || null input'
     then return Nothing
-    else f (commandMap ! cmd) str'
+    else f (commandMap ! cmd) bindings input'
 
-pipeCommand :: Mode -> Mode -> String -> Action
-pipeCommand basemode curmode str = do
-  val <- eval curmode str
-  val >>== evalOnce basemode
+pipeCommand :: Mode -> Mode -> Bindings -> String -> Action
+pipeCommand basemode curmode bindings input = do
+  val <- eval curmode bindings input
+  val >>== evalOnce basemode bindings
 
-eval :: Mode -> String -> Action
-eval mode str = case str of
+eval :: Mode -> Bindings -> String -> Action
+eval mode bindings input = case input of
   [] -> return Nothing
-  (' ':rest) -> eval mode rest
-  ('<':rest) -> handleCommand rest (pipeCommand mode)
-  ('|':rest) -> handleCommand rest (flip pipeCommand mode)
-  ('@':rest) -> handleCommand rest eval
-  input -> evalOnce mode input
+  (' ':rest) -> eval mode bindings rest
+  ('<':rest) -> handleCommand rest bindings (pipeCommand mode)
+  ('|':rest) -> handleCommand rest bindings (`pipeCommand` mode)
+  ('@':rest) -> handleCommand rest bindings eval
+  input' -> evalOnce mode bindings input'
 
-loop :: Mode -> String -> InputT IO ()
-loop mode mem = do
-  minput <- getColoredInputLine $ prompt '#' (show mode)
+loop :: Mode -> String -> Bindings -> InputT IO ()
+loop mode pvoutput bindings = do
+  minput <- getColoredInputLine $ getPrompt '#' (show mode)
   case minput of
     Nothing -> return ()
-    Just [] -> loop mode mem
-    Just "help" -> helpAction >> loop mode mem
+    Just [] -> loop mode pvoutput bindings
+    Just "help" -> helpAction >> loop mode pvoutput bindings
+    Just "bindings" -> do
+      let showBinding :: Char -> String -> InputT IO ()
+          showBinding name binding = outputStrLn
+            $ "\ESC[0m| " ++ color "35" [name] ++ " = " ++ color "34" binding -- ]
+      (sequence_ . elems $ M.mapWithKey showBinding bindings) >> loop mode pvoutput bindings
     Just "quit" -> return ()
     Just "exit" -> return ()
     Just "q" -> return ()
+    Just ('+':rest) -> do
+      case parseBinding rest of
+        Nothing -> do
+          printError "Incorrect binding"
+          loop mode pvoutput bindings
+        Just (name, binding) -> loop mode pvoutput (insert name binding bindings)
     Just ('>':rest) ->
       if member rest commandMap
-      then loop (commandMap ! rest) mem
+      then loop (commandMap ! rest) pvoutput bindings
       else do
         printError "Unknown command"
-        loop mode mem
+        loop mode pvoutput bindings
     Just ('^':rest) ->
       if member rest commandMap
       then do
-        mmem' <- eval (commandMap ! rest) mem
+        mmem' <- eval (commandMap ! rest) bindings pvoutput
         case mmem' of
           Nothing -> do
             printError "Exception while processing input"
-            loop mode mem
-          Just mem' -> loop mode mem'
+            loop mode pvoutput bindings
+          Just mem' -> loop mode mem' bindings
       else do
         printError "Unknown command"
-        loop mode mem
+        loop mode pvoutput bindings
     Just input -> do
-      mmem' <- eval mode input
+      mmem' <- eval mode bindings input
       case mmem' of
         Nothing -> do
           printError "Exception while processing input"
-          loop mode mem
-        Just mem' -> loop mode mem'
+          loop mode pvoutput bindings
+        Just mem' -> loop mode mem' bindings
 
 -- ┌───────────────────┐
 -- │ Building the REPL │
@@ -353,4 +391,4 @@ main = do
   runInputT settings $ case opts of
     Options { errorOpt = True } -> printError "Unrecognized option"
     Options { helpOpt = True } -> helpAction
-    _ -> loop (modeOpt opts) ""
+    _ -> loop (modeOpt opts) "" empty

@@ -2,50 +2,25 @@ module Lambda where
 
 import Control.Monad
 import Data.Char (isAlpha, isDigit)
-import Data.List (elemIndex, nub)
+import Data.List (elemIndex)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
-
-maximum' :: (Ord a, Num a) => [a] -> a
-maximum' [] = 0
-maximum' s = maximum s
-
-delete :: (Eq a) => a -> [a] -> [a]
-delete a = filter (/= a)
-
-add :: (Eq a) => a -> [a] -> [a]
-add a as = nub $ a : as
-
-union :: (Eq a) => [a] -> [a] -> [a]
-union as bs = nub $ as ++ bs
-
-intersection :: (Eq a) => [a] -> [a] -> [a]
-intersection as = filter (`elem` as)
-
-prefixLength :: (Eq a) => [a] -> [a] -> Int
-prefixLength [] _ = 0
-prefixLength _ [] = 0
-prefixLength (x : xs) (y : ys)
-  | x == y = 1 + prefixLength xs ys
-  | otherwise = 0
-
-checkCondition :: (a -> Bool) -> a -> Maybe a
-checkCondition f a = if f a then Just a else Nothing
+import Data.Set (Set, empty, insert, delete, union, intersection, singleton, findMax, toList)
 
 getCombinedTerms :: String -> [String]
 getCombinedTerms [] = []
 getCombinedTerms (var : rest)
   | null rest = [[var]]
   | isAlpha var = (var : take n1 rest) : getCombinedTerms (drop n1 rest)
-  | var == '(' = (var : take n2 rest) : getCombinedTerms (drop n2 rest)
-  | var == '[' = (var : take n3 rest) : getCombinedTerms (drop n3 rest)
+  | var == '(' = (var : take n2 rest) : getCombinedTerms (drop n2 rest) -- )
+  | var == '[' = (var : take n3 rest) : getCombinedTerms (drop n3 rest) -- ]
   | otherwise = [var] : getCombinedTerms rest
   where
     findAlpha :: String -> Int
     findAlpha [] = 0
     findAlpha (a : as)
-      | a == '(' = 0
-      | a == '[' = 0
+      | a == '(' = 0 -- )
+      | a == '[' = 0 -- ]
       | isAlpha a = 0
       | otherwise = 1 + findAlpha as
     n1 :: Int
@@ -75,9 +50,6 @@ raise f ma mb = mb >>= raise' f ma
     raise' :: (Monad m) => (a -> b -> c) -> m a -> b -> m c
     raise' f' ma' b' = fmap (`f'` b') ma'
 
-uncurry' :: (a -> b -> c -> d) -> a -> (b, c) -> d
-uncurry' f a = uncurry (f a)
-
 -- ┌───────────────────────────┐
 -- │ the lambda calculus model │
 -- └───────────────────────────┘
@@ -89,7 +61,6 @@ varSet :: [Char]
 varSet = ['x', 'y', 'z', 'w', 'u', 't', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'p', 'q', 'n', 'm', 'k']
 
 type Variable = Int
-
 data Lambda = Var Variable | Abst Variable Lambda | Appl Lambda Lambda deriving (Read, Show, Eq)
 
 combinatorI :: Lambda
@@ -124,8 +95,9 @@ omegaBig :: Int -> Lambda
 omegaBig n = Appl (omegaSmall n) (omegaSmall n)
 
 church :: Int -> Lambda
-church 0 = adjustBoundVars $ Abst 0 combinatorI
-church n = adjustBoundVars $ Abst 0 $ Abst 1 $ Appl (Var 0) $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)
+church 0 = adjustBoundVars $ Abst 0 (Abst 1 (Var 1))
+-- church n = reduce $ adjustBoundVars $ Abst 0 $ Abst 1 $ Appl (Var 0) $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)
+church n = Abst 0 (Abst 1 $ Appl (Var 0) (reduce $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)))
 zeroChurch :: Lambda
 zeroChurch = parseJust "\\x.x((\\y.\\z.y)(\\y.\\z.z))(\\y.\\z.y)"
 succChurch :: Lambda
@@ -142,17 +114,17 @@ expChurch = parseJust "\\x.\\y.yx"
 pair :: Lambda -> Lambda -> Lambda
 pair l1 l2 = Abst n (Appl (Appl (Var n) l1) l2)
   where
-    n = 1 + max (maximum' $ totalVarSet l1) (maximum' $ totalVarSet l2)
+    n = 1 + max (findMax $ totalVarSet l1) (findMax $ totalVarSet l2)
 
 barend :: Int -> Lambda
 barend 0 = combinatorI
 barend n = pair false (barend $ n - 1)
 zeroBarend :: Lambda
-zeroBarend = parseJust "\\x.x(\\y,z.y)"
+zeroBarend = parseJust "\\x.x(\\y.\\z.y)"
 succBarend :: Lambda
-succBarend = parseJust "\\f,x.x(\\y,z.z)f"
+succBarend = parseJust "\\f.\\x.x(\\y.\\z.z)f"
 prevBarend :: Lambda
-prevBarend = parseJust "\\f.f(\\x,y.y)"
+prevBarend = parseJust "\\f.f(\\x.\\y.y)"
 
 -- ┌──────────────────────┐
 -- │ Parsing lambda terms │
@@ -162,17 +134,17 @@ preprocess :: String -> String
 preprocess [] = []
 preprocess (',':rest) = '.' : '\\' : preprocess rest
 ----------
-preprocess ('c':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroChurch ++ ")" ++ preprocess rest
-preprocess ('c':'S':'u':'c':'c':rest) = "(" ++ unparse False succChurch ++ ")" ++ preprocess rest
-preprocess ('c':'P':'r':'e':'v':rest) = "(" ++ unparse False prevChurch ++ ")" ++ preprocess rest
-preprocess ('c':'A':'d':'d':rest) = "(" ++ unparse False addChurch ++ ")" ++ preprocess rest
-preprocess ('c':'M':'u':'l':'t':rest) = "(" ++ unparse False multChurch ++ ")" ++ preprocess rest
-preprocess ('c':'E':'x':'p':rest) = "(" ++ unparse False expChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False succChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False prevChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False addChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False multChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False expChurch ++ ")" ++ preprocess rest
 ----------
-preprocess ('b':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroBarend ++ ")" ++ preprocess rest
-preprocess ('b':'S':'u':'c':'c':rest) = "(" ++ unparse False succBarend ++ ")" ++ preprocess rest
-preprocess ('b':'P':'r':'e':'v':rest) = "(" ++ unparse False prevBarend ++ ")" ++ preprocess rest
-preprocess (char:'_':rest)
+preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroBarend ++ ")" ++ preprocess rest
+preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False succBarend ++ ")" ++ preprocess rest
+preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False prevBarend ++ ")" ++ preprocess rest
+preprocess (char:':':rest)
   | char == 'c' = "(" ++ unparse False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
   | char == 'b' = "(" ++ unparse False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
   | char == 'o' = "(" ++ unparse False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
@@ -236,7 +208,7 @@ parse ('\\' : 'v' : char : rest)
         f n ('.' : rest') = raise Abst (Just n) (parse' rest')
         f _ _ = Nothing
      in f 1 rest
-parse ('\\' : var : '.' : rest) = raise Abst (elemIndex var varSet) (parse $ rest)
+parse ('\\' : var : '.' : rest) = raise Abst (elemIndex var varSet) (parse rest)
 parse str
   | length objects > 1 = raise Appl (parse $ join (init objects)) (parse $ last objects)
   | head object == '(' = parse (init . tail $ object)
@@ -272,14 +244,15 @@ wrapNotVar f (Var n) = f (Var n)
 wrapNotVar f l = "(" ++ f l ++ ")"
 
 recognizeChurch :: Lambda -> Maybe Int
-recognizeChurch l
-  | congr l (Abst 0 (Abst 1 (Var 1))) = Just 0
-  | otherwise = case l of
-    Abst n1 (Abst n2 (Appl (Var n3) (Appl (Appl l' (Var n4)) (Var n5)))) ->
-      if n1 == n3 && n1 == n4 && n2 == n5
-      then (1+) <$> recognizeChurch l'
-      else Nothing
-    _ -> Nothing
+recognizeChurch (Abst n1 (Abst n2 l)) = f l
+  where
+    f :: Lambda -> Maybe Int
+    f (Var n)
+      | n == n2 = Just 0
+    f (Appl (Var n1') l')
+      | n1' == n1 = (1+) <$> f l'
+    f _ = Nothing
+recognizeChurch _ = Nothing
 
 recognizeBarend :: Lambda -> Maybe Int
 recognizeBarend l
@@ -299,8 +272,8 @@ unparse True l
   | congr l combinatorS = "S"
   | congr l combinatorY = "Y"
   | congr l combinatorOmega = "O" 
-  | isChurch = "c_" ++ (show . fromJust $ theChurch)
-  | isBarend = "b_" ++ (show . fromJust $ theBarend)
+  | isChurch = "c:" ++ (show . fromJust $ theChurch)
+  | isBarend = "b:" ++ (show . fromJust $ theBarend)
     where
       theChurch = recognizeChurch l
       isChurch = case theChurch of
@@ -334,18 +307,18 @@ unparseFormal (Appl l1 l2) = "(" ++ unparseFormal l1 ++ unparseFormal l2 ++ ")"
 -- │ the logic of lambda terms │
 -- └───────────────────────────┘
 
-totalVarSet :: Lambda -> [Variable]
-totalVarSet (Var n) = [n]
-totalVarSet (Abst n l) = add n $ totalVarSet l
+totalVarSet :: Lambda -> Set Variable
+totalVarSet (Var n) = singleton n
+totalVarSet (Abst n l) = insert n $ totalVarSet l
 totalVarSet (Appl l1 l2) = totalVarSet l1 `union` totalVarSet l2
 
-boundVarSet :: Lambda -> [Variable]
-boundVarSet (Var _) = []
-boundVarSet (Abst n l) = add n $ boundVarSet l
+boundVarSet :: Lambda -> Set Variable
+boundVarSet (Var _) = empty
+boundVarSet (Abst n l) = insert n $ boundVarSet l
 boundVarSet (Appl l1 l2) = boundVarSet l1 `union` boundVarSet l2
 
-freeVarSet :: Lambda -> [Variable]
-freeVarSet (Var n) = [n]
+freeVarSet :: Lambda -> Set Variable
+freeVarSet (Var n) = singleton n
 freeVarSet (Abst n l) = delete n $ freeVarSet l
 freeVarSet (Appl l1 l2) = freeVarSet l1 `union` freeVarSet l2
 
@@ -398,17 +371,19 @@ changeBoundVar (Abst n l) m1 m2
       substituteVar (Appl l1' l2') from to = Appl (substituteVar l1' from to) (substituteVar l2' from to)
 changeBoundVar (Appl l1 l2) m1 m2 = Appl (changeBoundVar l1 m1 m2) (changeBoundVar l2 m1 m2)
 
-moveBoundVars :: Lambda -> [Variable] -> Lambda
+moveBoundVars :: Lambda -> Set Variable -> Lambda
 moveBoundVars l lst = foldl (uncurry' changeBoundVar) l pairlst
   where
     bv = boundVarSet l
     lst' = intersection lst bv
-    vmax = 1 + max (maximum' lst) (maximum' bv)
-    pairlst = zip lst' [vmax .. (vmax - 1 + length lst')]
+    vmax = 1 + max (findMax lst) (findMax bv)
+    pairlst = zip (toList lst') [vmax .. (vmax - 1 + length lst')]
+    uncurry' :: (a -> b -> c -> d) -> a -> (b, c) -> d
+    uncurry' f a = uncurry (f a)
 
 adjustBoundVars :: Lambda -> Lambda
 adjustBoundVars (Var n) = Var n
-adjustBoundVars (Abst n l) = Abst n $ adjustBoundVars $ moveBoundVars l [n]
+adjustBoundVars (Abst n l) = Abst n $ adjustBoundVars $ moveBoundVars l (singleton n)
 adjustBoundVars (Appl l1 l2) = Appl (adjustBoundVars l1') (adjustBoundVars l2')
   where
     fv = freeVarSet l1 `union` freeVarSet l2

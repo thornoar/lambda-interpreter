@@ -59,6 +59,32 @@
       -- f n (',' : rest') = raise Abst (Just n) (parse' ('\\' : rest'))
 
 
+-- prefixLength :: (Eq a) => [a] -> [a] -> Int
+-- prefixLength [] _ = 0
+-- prefixLength _ [] = 0
+-- prefixLength (x : xs) (y : ys)
+--   | x == y = 1 + prefixLength xs ys
+--   | otherwise = 0
+
+-- checkCondition :: (a -> Bool) -> a -> Maybe a
+-- checkCondition f a = if f a then Just a else Nothing
+
+-- findMax :: (Ord a, Num a) => [a] -> a
+-- findMax [] = 0
+-- findMax s = maximum s
+--
+-- delete :: (Eq a) => a -> [a] -> [a]
+-- delete a = filter (/= a)
+--
+-- insert :: (Eq a) => a -> [a] -> [a]
+-- insert a as = nub $ a : as
+--
+-- union :: (Eq a) => [a] -> [a] -> [a]
+-- union as bs = nub $ as ++ bs
+--
+-- intersection :: (Eq a) => [a] -> [a] -> [a]
+-- intersection as = filter (`elem` as)
+
   -- | null rest = Nothing
   -- | var == 'v' =
   --   let 
