@@ -58,6 +58,10 @@
 
       -- f n (',' : rest') = raise Abst (Just n) (parse' ('\\' : rest'))
 
+-- replaceChar _ [] = []
+-- replaceChar (from, to) (char:rest)
+--   | char == from = "(" ++ to ++ ")" ++ replaceChar (from, to) rest
+--   | otherwise = char : replaceChar (from, to) rest
 
 -- prefixLength :: (Eq a) => [a] -> [a] -> Int
 -- prefixLength [] _ = 0

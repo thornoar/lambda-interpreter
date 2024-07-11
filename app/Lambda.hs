@@ -96,7 +96,6 @@ omegaBig n = Appl (omegaSmall n) (omegaSmall n)
 
 church :: Int -> Lambda
 church 0 = adjustBoundVars $ Abst 0 (Abst 1 (Var 1))
--- church n = reduce $ adjustBoundVars $ Abst 0 $ Abst 1 $ Appl (Var 0) $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)
 church n = Abst 0 (Abst 1 $ Appl (Var 0) (reduce $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)))
 zeroChurch :: Lambda
 zeroChurch = parseJust "\\x.x((\\y.\\z.y)(\\y.\\z.z))(\\y.\\z.y)"
