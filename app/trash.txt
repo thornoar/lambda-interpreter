@@ -54,6 +54,11 @@
       --   tv2 = boundVarSet l2'
       --   l2' = changeBoundVar l2' n (1 + maximum tv2)
 
+      -- if member rest modeMap
+      -- then loop (modeMap ! rest) history bindings
+      -- else do
+      --   printError "Invalid mode" rest
+      --   loop mode history bindings
 
 
       -- f n (',' : rest') = raise Abst (Just n) (parse' ('\\' : rest'))

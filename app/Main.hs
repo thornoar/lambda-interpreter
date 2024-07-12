@@ -148,7 +148,7 @@ getColoredInputLine pref = do
   res <- getInputLine pref
   outputStr "\ESC[0m" -- ]
   case res of
-    Nothing -> return (Error [] [])
+    Nothing -> return (Error "Input error" [])
     Just str -> return (Content str)
   -- return res
 
@@ -280,8 +280,8 @@ handleCommand input bindings f = do
       else f (modeMap ! mode) bindings input'
 
 pipeCommand :: Mode -> Mode -> Bindings -> String -> Action
-pipeCommand basemode modestr bindings input = do
-  val <- eval modestr bindings input
+pipeCommand basemode curmode bindings input = do
+  val <- eval curmode bindings input
   val >>== evalOnce basemode bindings
 
 eval :: Mode -> Bindings -> String -> Action
@@ -289,13 +289,13 @@ eval mode bindings input = case input of
   [] -> return (Error "No input given" [])
   (' ':rest) -> eval mode bindings rest
   ('<':rest) -> handleCommand rest bindings (pipeCommand mode)
-  ('|':rest) -> handleCommand rest bindings (`pipeCommand` mode)
-  ('@':rest) -> handleCommand rest bindings eval
-  input' -> evalOnce mode bindings input'
+  ('>':rest) -> handleCommand rest bindings (`pipeCommand` mode)
+  -- ('@':rest) -> handleCommand rest bindings eval
+  other -> evalOnce mode bindings other
 
 (+|) :: String -> [String] -> [String]
-(+|) str [] = [str]
-(+|) str arr
+str +| [] = [str]
+str +| arr
   | str == head arr = arr
   | otherwise = str : arr
 
@@ -303,7 +303,7 @@ loop :: Mode -> [String] -> Bindings -> InputT IO ()
 loop mode history bindings = do
   minput <- getColoredInputLine $ getPrompt '#' (show mode)
   case minput of
-    Error [] _ -> return ()
+    Error _ _ -> return ()
     Content [] -> loop mode history bindings
     Content "help" -> helpAction >> loop mode history bindings
     Content "bindings" -> do
@@ -311,21 +311,24 @@ loop mode history bindings = do
           showBinding name binding = outputStrLn
             $ "\ESC[0m| " ++ color "35" [name] ++ " = " ++ color "34" binding -- ]
       (sequence_ . elems $ M.mapWithKey showBinding bindings) >> loop mode history bindings
+    Content "clear" -> loop mode history empty
     Content "quit" -> return ()
     Content "exit" -> return ()
     Content ":q" -> return ()
-    Content ('+':rest) -> do
-      case parseBinding rest of
-        Error str trace -> do
-          printError str trace
-          loop mode history bindings
-        Content (name, binding) -> loop mode history (insert name binding bindings)
-    Content ('>':rest) ->
-      if member rest modeMap
-      then loop (modeMap ! rest) history bindings
-      else do
-        printError "Invalid mode" rest
+    Content ('+':rest) -> case parseBinding rest of
+      Error str trace -> do
+        printError str trace
         loop mode history bindings
+      Content (name, binding) -> loop mode history (insert name binding bindings)
+    Content ('|':rest) -> action
+      where
+        action :: InputT IO ()
+        action
+          | null rest = loop RETURN history bindings
+          | member rest modeMap = loop (modeMap ! rest) history bindings
+          | otherwise = do
+              printError "Invalid mode" rest
+              loop mode history bindings
     Content ('^':rest) -> action
       where
         countDistance :: String -> Int
@@ -349,6 +352,13 @@ loop mode history bindings = do
                   printError str trace
                   loop mode history bindings
                 Content output -> loop mode (output +| history) bindings
+    Content ('@':rest) -> do
+      moutput <- handleCommand rest bindings eval
+      case moutput of
+        Error str trace -> do
+          printError str trace
+          loop mode history bindings
+        Content output -> loop mode (output +| history) bindings
     Content input -> do
       moutput <- eval mode bindings input
       case moutput of
@@ -356,9 +366,6 @@ loop mode history bindings = do
           printError str trace
           loop mode history bindings
         Content output -> loop mode (output +| history) bindings
-    Error str trace -> do
-      printError str trace
-      loop mode history bindings
 
 -- ┌───────────────────┐
 -- │ Building the REPL │
@@ -371,7 +378,7 @@ data Options = Options {
   }
 
 parseOptions :: [String] -> Options
-parseOptions [] = Options { helpOpt = False, modeOpt = REPEAT, errorOpt = Nothing }
+parseOptions [] = Options { helpOpt = False, modeOpt = RETURN, errorOpt = Nothing }
 parseOptions (opt:rest)
   | opt == "-h" || opt == "--help" = (parseOptions rest) { helpOpt = True }
   | (opt == "-m" || opt == "--mode") && not (null rest) && member mode modeMap =
@@ -412,7 +419,7 @@ helpAction = do
   outputStrLn $ calibrateLengthPost (l1+l2) "  ^MODE"
     ++ "run the specified mode with the result of the previous evaluation."
   outputStrLn $ calibrateLengthPost (l1+l2) "  +BINDING"
-    ++ "create a local variable, with syntax N = BODY"
+    ++ "create a local binding, with syntax N = BODY"
   outputStrLn "\nmodes:"
   mapM_ getCommandInfo commandList
 
