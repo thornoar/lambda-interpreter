@@ -125,7 +125,7 @@ color :: String -> String -> String
 color typ str = "\ESC[" ++ typ ++ "m" ++ str ++ "\ESC[0m" -- ]]
 
 promptLength :: Int
-promptLength = 16
+promptLength = 18
 
 getPrompt :: Char -> String -> String
 getPrompt rep body = "\ESC[0m(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m" -- ]]
@@ -184,17 +184,17 @@ withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
 evalOnce :: Mode -> Bindings -> String -> Action String
 evalOnce RETURN = (return . Content) <.> useBindings
 evalOnce REPEAT = (printLn . Content) <.> useBindings
-evalOnce PRINT = (printLn . fmap (unparse True)) <.> parseWithBindings'
-evalOnce EXPAND = (printLn . fmap (unparse False)) <.> parseWithBindings'
-evalOnce SUBS = withThree substitute parseOutput' getVar parseOutput' (unparse True) ("VAR", "EXPR")
+evalOnce PRINT = (printLn . fmap (unparse True True)) <.> parseWithBindings'
+evalOnce EXPAND = (printLn . fmap (unparse True False)) <.> parseWithBindings'
+evalOnce SUBS = withThree substitute parseOutput' getVar parseOutput' (unparse True False) ("VAR", "EXPR")
   where
     getVar :: String -> Output Int
     getVar str = case parseOutput' str of
       Error str' trace -> Error str' trace
       Content (Var n) -> Content n
       _ -> Error "Expression is not a variable" str
-evalOnce REDUCE = (printLn . fmap (unparse True . reduce)) <.> parseWithBindings'
-evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parseOutput' readOutput (unparse True) "LIMIT"
+evalOnce REDUCE = (printLn . fmap (unparse True True . reduce)) <.> parseWithBindings'
+evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parseOutput' readOutput (unparse True True) "LIMIT"
 evalOnce STEPS = print' <.> parseWithBindings'
   where
     print' :: Output Lambda -> Action String
@@ -202,7 +202,7 @@ evalOnce STEPS = print' <.> parseWithBindings'
     print' (Content l) = showSteps l
     showSteps :: Lambda -> Action String
     showSteps l = do
-      let lstr = unparse False l
+      let lstr = unparse True False l
       _ <- printGeneral outputStr (Content lstr)
       input <- getColoredInputLine ""
       case input of
@@ -211,13 +211,13 @@ evalOnce STEPS = print' <.> parseWithBindings'
           let (l', found) = reduceStep l
           if found
           then showSteps l'
-          else evalOnce PRINT empty lstr
+          else return $ Content lstr
 evalOnce CONGR = withTwo congr parseOutput' parseOutput' show "AND"
 evalOnce EQUIV = withTwo equiv parseOutput' parseOutput' show "AND"
 evalOnce SHOW = (printLn . fmap show) <.> parseWithBindings'
-evalOnce READ = \_ -> printLn . fmap (unparse True) . readOutput
+evalOnce READ = \_ -> printLn . fmap (unparse True False) . readOutput
 evalOnce TOFORMAL = (printLn . fmap unparseFormal) <.> parseWithBindings'
-evalOnce TOINFORMAL = (printLn . fmap (unparse True)) <.> parseWithBindings'
+evalOnce TOINFORMAL = (printLn . fmap (unparse True False)) <.> parseWithBindings'
 evalOnce LET = withTwo replaceChar parseBinding Content id "IN"
 evalOnce WITHBIND = withTwo (flip replaceChar) Content parseBinding id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Content extractChar Content id ("ASSIGN TO", "IN")
@@ -319,18 +319,34 @@ loop mode history bindings = do
         countDistance :: String -> Int
         countDistance ('^':rest') = 1 + countDistance rest'
         countDistance _ = 0
+        removeSpaces :: String -> String
+        removeSpaces [] = []
+        removeSpaces (' ':rest') = removeSpaces rest'
+        removeSpaces (char:rest') = char : removeSpaces rest'
         distance = countDistance rest
-        modestr = drop distance rest
+        cmd = drop distance rest
         action :: InputT IO ()
         action
           | distance >= length history = do
               printError "History length out of bounds" (show $ distance + 1)
               loop mode history bindings
-          | not (null modestr) && notMember modestr modeMap = do
-              printError "Invalid mode" modestr
+          | null cmd = do
+              moutput <- eval mode bindings (history !! distance)
+              case moutput of
+                Error str trace -> do
+                  printError str trace
+                  loop mode history bindings
+                Content output -> loop mode (output +| history) bindings
+          | head cmd == '+' = case tail cmd of
+              [] -> printError "No name given" [] >> loop mode history bindings
+              str -> case removeSpaces str of
+                [char] -> loop mode history (insert char (history !! distance) bindings)
+                _ -> printError "Names must be single-character" [] >> loop mode history bindings
+          | not (null cmd) && notMember cmd modeMap = do
+              printError "Invalid mode" cmd
               loop mode history bindings
           | otherwise = do
-              let curmode = if null modestr then mode else modeMap ! modestr
+              let curmode = if null cmd then mode else modeMap ! cmd
               moutput <- eval curmode bindings (history !! distance)
               case moutput of
                 Error str trace -> do

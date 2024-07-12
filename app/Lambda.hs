@@ -5,7 +5,7 @@ import Data.Char (isAlpha, isDigit)
 import Data.List (elemIndex)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
-import Data.Set (Set, empty, insert, delete, union, intersection, singleton, findMax, toList, member)
+import Data.Set (Set, empty, insert, delete, union, intersection, difference, singleton, findMax, toList, member)
 
 getCombinedTerms :: String -> [String]
 getCombinedTerms [] = []
@@ -133,21 +133,21 @@ preprocess :: String -> String
 preprocess [] = []
 preprocess (',':rest) = '.' : '\\' : preprocess rest
 ----------
-preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False succChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False prevChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False addChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False multChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False expChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False False succChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False False prevChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False False addChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False False multChurch ++ ")" ++ preprocess rest
+preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False False expChurch ++ ")" ++ preprocess rest
 ----------
-preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False zeroBarend ++ ")" ++ preprocess rest
-preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False succBarend ++ ")" ++ preprocess rest
-preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False prevBarend ++ ")" ++ preprocess rest
+preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroBarend ++ ")" ++ preprocess rest
+preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False False succBarend ++ ")" ++ preprocess rest
+preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False False prevBarend ++ ")" ++ preprocess rest
 preprocess (char:':':rest)
-  | char == 'c' = "(" ++ unparse False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'b' = "(" ++ unparse False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'o' = "(" ++ unparse False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'O' = "(" ++ unparse False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'c' = "(" ++ unparse False False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'b' = "(" ++ unparse False False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'o' = "(" ++ unparse False False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
+  | char == 'O' = "(" ++ unparse False False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
   | otherwise = preprocess rest
   where
     findNumber :: String -> String
@@ -166,13 +166,13 @@ preprocess ('i':'f':' ':rest) = '(' : preprocess rest
 preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
 preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
 ----------
-preprocess ('I' : rest) = "(" ++ unparse False combinatorI ++ ")" ++ preprocess rest
-preprocess ('K' : '*' : rest) = "(" ++ unparse False combinatorK' ++ ")" ++ preprocess rest
-preprocess ('K' : rest) = "(" ++ unparse False combinatorK ++ ")" ++ preprocess rest
-preprocess ('S' : rest) = "(" ++ unparse False combinatorS ++ ")" ++ preprocess rest
-preprocess ('Y' : rest) = "(" ++ unparse False combinatorY ++ ")" ++ preprocess rest
-preprocess ('O' : rest) = "(" ++ unparse False combinatorOmega ++ ")" ++ preprocess rest
-preprocess ('N' : rest) = "(" ++ unparse False combinatorNeg ++ ")" ++ preprocess rest
+preprocess ('I' : rest) = "(" ++ unparse False False combinatorI ++ ")" ++ preprocess rest
+preprocess ('K' : '*' : rest) = "(" ++ unparse False False combinatorK' ++ ")" ++ preprocess rest
+preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ preprocess rest
+preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
+preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
+preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
+preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
 ----------
 preprocess (' ':rest) = preprocess rest
 preprocess (char:str) = char : preprocess str
@@ -201,12 +201,6 @@ parse ('\\' : 'v' : char : rest)
         (numStr, rest') = f [] (char:rest)
         var = numStr >>= readMaybe
      in raise Abst var (rest' >>= parse')
-  | char == '\'' = 
-    let f :: Int -> String -> Maybe Lambda
-        f n ('\'' : rest') = f (n+1) rest'
-        f n ('.' : rest') = raise Abst (Just n) (parse' rest')
-        f _ _ = Nothing
-     in f 1 rest
 parse ('\\' : var : '.' : rest) = raise Abst (elemIndex var varSet) (parse rest)
 parse str
   | length objects > 1 = raise Appl (parse $ join (init objects)) (parse $ last objects)
@@ -263,8 +257,8 @@ recognizeBarend l
       else Nothing
     _ -> Nothing
 
-unparse :: Bool -> Lambda -> String
-unparse True l
+unparse :: Bool -> Bool -> Lambda -> String
+unparse _ True l
   | congr l combinatorI = "I"
   | congr l combinatorK = "K"
   | congr l combinatorK' = "K*"
@@ -282,20 +276,18 @@ unparse True l
       isBarend = case theBarend of
         Nothing -> False
         Just _ -> True
-unparse sugar (Var n)
+unparse sugar _ (Var n)
   | n < length varSet = [varSet !! n]
   | sugar = 'v' : show n
   | otherwise = varSetFormal !! n
-unparse sugar (Abst n (Abst m l))
-  | sugar = "\\" ++ unparse True (Var n) ++ unparsedRest
-  | otherwise = "\\" ++ unparse False (Var n) ++ "." ++ unparse False (Abst m l)
-    where
-      unparsedRest = case unparse True (Abst m l) of
-        '\\' : str -> ',' : str
-        str -> '.' : str
-unparse sugar (Abst n l) =
-  "\\" ++ unparse sugar  (Var n) ++ (if sugar then ". " else ".") ++ wrapAbst (unparse sugar) l
-unparse sugar (Appl l1 l2) = wrapAbst (unparse sugar) l1 ++ wrapNotVar (unparse sugar) l2
+unparse sugar alias (Abst n (Abst m l))
+  | sugar = "\\" ++ unparse True alias (Var n) ++ case unparse True alias (Abst m l) of
+      '\\' : str -> ',' : str
+      str -> '.' : str
+  | otherwise = "\\" ++ unparse False alias (Var n) ++ "." ++ unparse False alias (Abst m l)
+unparse sugar alias (Abst n l) =
+  "\\" ++ unparse sugar alias (Var n) ++ (if sugar then ". " else ".") ++ wrapAbst (unparse sugar alias) l
+unparse sugar alias (Appl l1 l2) = wrapAbst (unparse sugar alias) l1 ++ wrapNotVar (unparse sugar alias) l2
 
 unparseFormal :: Lambda -> String
 unparseFormal (Var n) = varSetFormal !! n
@@ -345,17 +337,19 @@ parseJust' = fromJust . parse'
 -- └───────────────────────┘
 
 substitute :: Lambda -> Variable -> Lambda -> Lambda
-substitute (Var n) m expr
-  | n == m = expr
-  | otherwise = Var n
-substitute (Abst n src) m expr
-  | n == m = Abst n src
-  | n `member` exprtvs = Abst n' (substitute (substituteVar src n n') m expr)
-  | otherwise = Abst n (substitute src m expr)
-    where
-      exprtvs = totalVarSet expr
-      n' = 1 + max (findMax $ totalVarSet src) (findMax exprtvs)
-substitute (Appl src1 src2) m expr = Appl (substitute src1 m expr) (substitute src2 m expr)
+substitute src var expr
+  | var `member` boundVarSet src = src
+  | otherwise = substitute'
+      (moveBoundVars src (freeVarSet expr))
+      var
+      (moveBoundVars expr (difference (totalVarSet src) (singleton var)))
+  where
+    substitute' :: Lambda -> Variable -> Lambda -> Lambda
+    substitute' (Var n) m expr'
+      | n == m = expr'
+      | otherwise = Var n
+    substitute' (Abst n src') m expr' = Abst n (substitute' src' m expr')
+    substitute' (Appl src1' src2') m expr' = Appl (substitute' src1' m expr') (substitute' src2' m expr')
 
 substituteVar :: Lambda -> Variable -> Variable -> Lambda
 substituteVar (Var n') from to
@@ -451,5 +445,3 @@ congr _ _ = False
 
 equiv :: Lambda -> Lambda -> Bool
 equiv l1 l2 = congr (reduce l1) (reduce l2)
-
--- inconsistent :: Lambda -> Lambda -> Maybe

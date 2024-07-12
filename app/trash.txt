@@ -315,6 +315,38 @@
 --           exprtvs = totalVarSet l2'
 --           n' = 1 + max (findMax $ totalVarSet l1') (findMax exprtvs)
 --     substitute m l' (Appl l1' l2') = Appl (substitute m l' l1') (substitute m l' l2')
+    -- exprfvs = freeVarSet expr
+    -- exprtvs = totalVarSet expr
+      -- | n == m = Abst n src'
+      -- | n `member` exprtvs = Abst n' (substitute' (substituteVar src' n n') m expr')
+      -- | otherwise = Abst n (substitute' src' m expr')
+        -- where
+        --   n' = 1 + max (findMax $ totalVarSet src') (findMax exprtvs)
+
+
+  -- | char == '\'' = 
+  --   let f :: Int -> String -> Maybe Lambda
+  --       f n ('\'' : rest') = f (n+1) rest'
+  --       f n ('.' : rest') = raise Abst (Just n) (parse' rest')
+  --       f _ _ = Nothing
+  --    in f 1 rest
+          -- else evalOnce PRINT empty lstr
+          -- else do--return $ Content lstr
+          --   outputStrLn $ "| " ++ replicate promptLength '-'
+          --   evalOnce PRINT empty lstr
+
+-- substitute :: Lambda -> Variable -> Lambda -> Lambda
+-- substitute (Var n) m expr
+--   | n == m = expr
+--   | otherwise = Var n
+-- substitute (Abst n src) m expr
+--   | n == m = Abst n src
+--   | n `member` exprtvs = Abst n' (substitute (substituteVar src n n') m expr)
+--   | otherwise = Abst n (substitute src m expr)
+--     where
+--       exprtvs = totalVarSet expr
+--       n' = 1 + max (findMax $ totalVarSet src) (findMax exprtvs)
+-- substitute (Appl src1 src2) m expr = Appl (substitute src1 m expr) (substitute src2 m expr)
 
 -- evalOnce :: Mode -> String -> InputT IO ()
 -- evalOnce PRINT = io (("| " ++) . color "34" . unparse') . parse'
