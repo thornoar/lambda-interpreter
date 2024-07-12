@@ -5,7 +5,7 @@ import Data.Char (isAlpha, isDigit)
 import Data.List (elemIndex)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
-import Data.Set (Set, empty, insert, delete, union, intersection, singleton, findMax, toList)
+import Data.Set (Set, empty, insert, delete, union, intersection, singleton, findMax, toList, member)
 
 getCombinedTerms :: String -> [String]
 getCombinedTerms [] = []
@@ -345,29 +345,30 @@ parseJust' = fromJust . parse'
 -- └───────────────────────┘
 
 substitute :: Lambda -> Variable -> Lambda -> Lambda
-substitute l from to = substitute' from to $ moveBoundVars l (totalVarSet to)
-  where
-    substitute' :: Variable -> Lambda -> Lambda -> Lambda
-    substitute' m l' (Var n)
-      | n == m = l'
-      | otherwise = Var n
-    substitute' m l2' (Abst n l1')
-      | n == m = Abst n l1'
-      | otherwise = Abst n (substitute' m l2' l1')
-    substitute' m l' (Appl l1' l2') = Appl (substitute' m l' l1') (substitute' m l' l2')
+substitute (Var n) m expr
+  | n == m = expr
+  | otherwise = Var n
+substitute (Abst n src) m expr
+  | n == m = Abst n src
+  | n `member` exprtvs = Abst n' (substitute (substituteVar src n n') m expr)
+  | otherwise = Abst n (substitute src m expr)
+    where
+      exprtvs = totalVarSet expr
+      n' = 1 + max (findMax $ totalVarSet src) (findMax exprtvs)
+substitute (Appl src1 src2) m expr = Appl (substitute src1 m expr) (substitute src2 m expr)
+
+substituteVar :: Lambda -> Variable -> Variable -> Lambda
+substituteVar (Var n') from to
+  | n' == from = Var to
+  | otherwise = Var n'
+substituteVar (Abst n' l') from to = Abst n' $ substituteVar l' from to
+substituteVar (Appl l1' l2') from to = Appl (substituteVar l1' from to) (substituteVar l2' from to)
 
 changeBoundVar :: Lambda -> Variable -> Variable -> Lambda
 changeBoundVar (Var n) _ _ = Var n
 changeBoundVar (Abst n l) m1 m2
   | n == m1 = Abst m2 $ substituteVar l m1 m2
   | otherwise = Abst n $ changeBoundVar l m1 m2
-    where
-      substituteVar :: Lambda -> Variable -> Variable -> Lambda
-      substituteVar (Var n') from to
-        | n' == from = Var to
-        | otherwise = Var n'
-      substituteVar (Abst n' l') from to = Abst n' $ substituteVar l' from to
-      substituteVar (Appl l1' l2') from to = Appl (substituteVar l1' from to) (substituteVar l2' from to)
 changeBoundVar (Appl l1 l2) m1 m2 = Appl (changeBoundVar l1 m1 m2) (changeBoundVar l2 m1 m2)
 
 moveBoundVars :: Lambda -> Set Variable -> Lambda

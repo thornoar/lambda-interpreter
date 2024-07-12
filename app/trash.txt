@@ -63,6 +63,13 @@
 
       -- f n (',' : rest') = raise Abst (Just n) (parse' ('\\' : rest'))
 
+-- calibrateLengthPre :: Int -> Char -> String -> String
+-- calibrateLengthPre n rep str
+--   | len > n = str
+--   | otherwise = replicate (n - len) rep ++ str
+--   where
+--     len = length str
+
 -- replaceChar _ [] = []
 -- replaceChar (from, to) (char:rest)
 --   | char == from = "(" ++ to ++ ")" ++ replaceChar (from, to) rest
@@ -291,6 +298,23 @@
 -- pipeMaybe f Nothing = return Nothing
 -- pipeMaybe f (Just a) = f a
 
+-- substitute :: Lambda -> Variable -> Lambda -> Lambda
+-- substitute l var expr = substitute' var expr l
+--   -- | var `member` boundVarSet l = l
+--   -- | otherwise = substitute' var (moveBoundVars expr (totalVarSet l)) (moveBoundVars l (freeVarSet expr))
+--   where
+--     -- bvs = boundVarSet l
+--     substitute :: Variable -> Lambda -> Lambda -> Lambda
+--     substitute m l' (Var n)
+--       | n == m = l'
+--       | otherwise = Var n
+--     substitute m l2' (Abst n l1')
+--       | n == m = Abst n l1'
+--       | n `member` exprtvs = Abst n' (substitute m l2' (substituteVar l1' n n'))
+--         where
+--           exprtvs = totalVarSet l2'
+--           n' = 1 + max (findMax $ totalVarSet l1') (findMax exprtvs)
+--     substitute m l' (Appl l1' l2') = Appl (substitute m l' l1') (substitute m l' l2')
 
 -- evalOnce :: Mode -> String -> InputT IO ()
 -- evalOnce PRINT = io (("| " ++) . color "34" . unparse') . parse'

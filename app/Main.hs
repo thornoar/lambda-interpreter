@@ -35,7 +35,7 @@ instance Monad Output where
     Error str trace -> Error str trace
     Content a -> f a
 
-type Action = InputT IO (Output String)
+type Action a = InputT IO (Output a)
 type Bindings = Map Char String
 
 mapFromList :: (Ord a) => [(a, a, b, a)] -> Map a b
@@ -81,22 +81,10 @@ infixr 9 <.>
 (<.>) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 (<.>) g f a b = g (f a b)
 
-splitByFirstSpace :: String -> Output Int
-splitByFirstSpace [] = Error "Cannot split an empty string" []
-splitByFirstSpace (' ':_) = Content 0
-splitByFirstSpace (_:rest) = (+ 1) <$> splitByFirstSpace rest
-
 calibrateLengthPost :: Int -> String -> String
 calibrateLengthPost n str
   | len > n = str
   | otherwise = str ++ replicate (n - len) ' '
-  where
-    len = length str
-
-calibrateLengthPre :: Int -> Char -> String -> String
-calibrateLengthPre n rep str
-  | len > n = str
-  | otherwise = replicate (n - len) rep ++ str
   where
     len = length str
 
@@ -111,7 +99,7 @@ readOutput str = case readMaybe str of
   Just a -> Content a
 
 parseBinding :: String -> Output (Char, String)
-parseBinding [] = Error "No binding given" []
+parseBinding [] = Error "No input given" []
 parseBinding (' ':rest) = parseBinding rest
 parseBinding (char:' ':rest) = parseBinding (char:rest)
 parseBinding (char:'=':' ':rest) = parseBinding (char:'=':rest)
@@ -143,26 +131,25 @@ getPrompt :: Char -> String -> String
 getPrompt rep body = "\ESC[0m(" ++ color "33" body ++ ") " ++ replicate n rep ++ ": \ESC[34m" -- ]]
   where n = promptLength - length body - 5
 
-getColoredInputLine :: String -> Action
+getColoredInputLine :: String -> Action String
 getColoredInputLine pref = do
   res <- getInputLine pref
   outputStr "\ESC[0m" -- ]
   case res of
     Nothing -> return (Error "Input error" [])
     Just str -> return (Content str)
-  -- return res
 
 -- ┌─────────────────────────────────┐
 -- │ Evaluating and returning output │
 -- └─────────────────────────────────┘
 
-printGeneral :: (String -> InputT IO ()) -> Output String -> Action
+printGeneral :: (String -> InputT IO ()) -> Output String -> Action String
 printGeneral _ (Error str trace) = return (Error str trace)
 printGeneral f (Content str) = do
   f . ("| " ++) . color "34" $ str
   return $ Content str
 
-printLn :: Output String -> Action
+printLn :: Output String -> Action String
 printLn = printGeneral outputStrLn
 
 withTwo ::
@@ -170,19 +157,19 @@ withTwo ::
   (String -> Output a) -> (String -> Output b) ->
   (c -> String) ->
   String ->
-  Bindings -> String -> Action
+  Bindings -> String -> Action String
 withTwo f readA readB showC prompt bindings input = (readA . useBindings bindings) input >>== \a -> do
-      minput <- getColoredInputLine $ getPrompt ' ' prompt
-      mstr2 <- minput >>== eval RETURN bindings
-      let mb = mstr2 >>= (readB . useBindings bindings)
-      mb >>== \b -> printLn $ Content (showC $ f a b)
+  minput <- getColoredInputLine $ getPrompt ' ' prompt
+  mstr2 <- minput >>== eval RETURN bindings
+  let mb = mstr2 >>= (readB . useBindings bindings)
+  mb >>== \b -> printLn $ Content (showC $ f a b)
 
 withThree ::
   (a -> b -> c -> d) ->
   (String -> Output a) -> (String -> Output b) -> (String -> Output c) ->
   (d -> String) ->
   (String, String) ->
-  Bindings -> String -> Action
+  Bindings -> String -> Action String
 withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
   (readA . useBindings bindings) str1 >>== \a -> do
     minput2 <- getColoredInputLine $ getPrompt ' ' prompt1
@@ -194,39 +181,26 @@ withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
       let mc = mstr3 >>= (readC . useBindings bindings)
       mc >>== \c -> printLn $ Content (showC $ f a b c)
 
-evalOnce :: Mode -> Bindings -> String -> Action
+evalOnce :: Mode -> Bindings -> String -> Action String
 evalOnce RETURN = (return . Content) <.> useBindings
 evalOnce REPEAT = (printLn . Content) <.> useBindings
 evalOnce PRINT = (printLn . fmap (unparse True)) <.> parseWithBindings'
 evalOnce EXPAND = (printLn . fmap (unparse False)) <.> parseWithBindings'
-evalOnce SUBS = withThree
-  substitute
-  parseOutput'
-  getVar
-  parseOutput'
-  (unparse True)
-  ("VAR", "EXPR")
+evalOnce SUBS = withThree substitute parseOutput' getVar parseOutput' (unparse True) ("VAR", "EXPR")
   where
     getVar :: String -> Output Int
-    getVar str =
-      let mexpr = parseOutput' str
-       in case mexpr of
-          Error str' trace -> Error str' trace
-          Content (Var n) -> Content n
-          _ -> Error "Expression is not a variable" str
+    getVar str = case parseOutput' str of
+      Error str' trace -> Error str' trace
+      Content (Var n) -> Content n
+      _ -> Error "Expression is not a variable" str
 evalOnce REDUCE = (printLn . fmap (unparse True . reduce)) <.> parseWithBindings'
-evalOnce REDUCELIMIT = withTwo
-  (flip $ reduceWithLimit 0)
-  parseOutput'
-  readOutput
-  (unparse True)
-  "LIMIT"
+evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parseOutput' readOutput (unparse True) "LIMIT"
 evalOnce STEPS = print' <.> parseWithBindings'
   where
-    print' :: Output Lambda -> Action
+    print' :: Output Lambda -> Action String
     print' (Error str trace) = return (Error str trace)
     print' (Content l) = showSteps l
-    showSteps :: Lambda -> Action
+    showSteps :: Lambda -> Action String
     showSteps l = do
       let lstr = unparse False l
       _ <- printGeneral outputStr (Content lstr)
@@ -266,9 +240,14 @@ printError str trace = outputStrLn $ color "1;31" "error: " ++ str ++ ": " ++ co
 -- │ Command piping and mode changing │
 -- └──────────────────────────────────┘
 
-handleCommand :: String -> Bindings -> (Mode -> Bindings -> String -> Action) -> Action
+handleCommand :: String -> Bindings -> (Mode -> Bindings -> String -> Action String) -> Action String
 handleCommand input bindings f = do
-  let mn = splitByFirstSpace input
+  let
+    splitByFirstSpace :: String -> Output Int
+    splitByFirstSpace [] = Error "Cannot split an empty string" []
+    splitByFirstSpace (' ':_) = Content 0
+    splitByFirstSpace (_:rest) = (+ 1) <$> splitByFirstSpace rest
+    mn = splitByFirstSpace input
   mn >>== \n -> do
     let mode = take n input
         input' = drop (n+1) input
@@ -279,12 +258,12 @@ handleCommand input bindings f = do
       then return (Error "No input given" [])
       else f (modeMap ! mode) bindings input'
 
-pipeCommand :: Mode -> Mode -> Bindings -> String -> Action
+pipeCommand :: Mode -> Mode -> Bindings -> String -> Action String
 pipeCommand basemode curmode bindings input = do
   val <- eval curmode bindings input
   val >>== evalOnce basemode bindings
 
-eval :: Mode -> Bindings -> String -> Action
+eval :: Mode -> Bindings -> String -> Action String
 eval mode bindings input = case input of
   [] -> return (Error "No input given" [])
   (' ':rest) -> eval mode bindings rest
@@ -319,7 +298,13 @@ loop mode history bindings = do
       Error str trace -> do
         printError str trace
         loop mode history bindings
-      Content (name, binding) -> loop mode history (insert name binding bindings)
+      Content (name, binding) -> do
+        mbinding <- eval RETURN bindings binding
+        case mbinding of
+          Error str trace -> do
+            printError str trace
+            loop mode history bindings
+          Content truebinding -> loop mode history (insert name truebinding bindings)
     Content ('|':rest) -> action
       where
         action :: InputT IO ()
