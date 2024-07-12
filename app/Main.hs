@@ -19,20 +19,20 @@ data Mode = RETURN | REPEAT
   | LET | WITHBIND | ASSIGN
   deriving (Read, Show)
 
-data Output a = Content a | Error String String
+data Output a = Content a | Error String String String
 instance Functor Output where
   fmap f oa = case oa of
-    Error str trace -> Error str trace
+    Error str trace call -> Error str trace call
     Content a -> Content (f a)
 instance Applicative Output where
   pure = Content
   mf <*> ma = case mf of
-    Error str trace -> Error str trace
+    Error str trace call -> Error str trace call
     Content f -> fmap f ma
 instance Monad Output where
   return = pure
   mval >>= f = case mval of
-    Error str trace -> Error str trace
+    Error str trace call -> Error str trace call
     Content a -> f a
 
 type Action a = InputT IO (Output a)
@@ -74,7 +74,7 @@ modeMap = mapFromList commandList
 -- └────────────────────────────────┘
 
 (>>==) :: (Monad m) => Output a -> (a -> m (Output b)) -> m (Output b)
-(>>==) (Error str trace) _ = return (Error str trace)
+(>>==) (Error str trace call) _ = return (Error str trace call)
 (>>==) (Content a) f = f a
 
 infixr 9 <.>
@@ -90,24 +90,24 @@ calibrateLengthPost n str
 
 parseOutput' :: String -> Output Lambda
 parseOutput' str = case parse' str of
-  Nothing -> Error "Could not parse lambda expression" str
+  Nothing -> Error "Could not parse lambda expression" str "parseOutput'"
   Just l -> Content l
 
 readOutput :: (Read a) => String -> Output a
 readOutput str = case readMaybe str of
-  Nothing -> Error "Read error" str
+  Nothing -> Error "Read error" str "readOutput'"
   Just a -> Content a
 
 parseBinding :: String -> Output (Char, String)
-parseBinding [] = Error "No input given" []
+parseBinding [] = Error "No input given" [] "parseBinding"
 parseBinding (' ':rest) = parseBinding rest
 parseBinding (char:' ':rest) = parseBinding (char:rest)
 parseBinding (char:'=':' ':rest) = parseBinding (char:'=':rest)
 parseBinding (char:'=':rest)
-  | null rest = Error "No body given for" [char]
+  | null rest = Error "No body given for" [char] "parseBinding"
   | otherwise = Content (char, rest)
-parseBinding ('=':_) = Error "No name given" []
-parseBinding str = Error "Incorrect syntax" str
+parseBinding ('=':_) = Error "No name given" [] "parseBinding"
+parseBinding str = Error "Incorrect syntax" str "parseBinding"
 
 useBindings :: Bindings -> String -> String
 useBindings _ [] = []
@@ -136,7 +136,7 @@ getColoredInputLine pref = do
   res <- getInputLine pref
   outputStr "\ESC[0m" -- ]
   case res of
-    Nothing -> return (Error "Input error" [])
+    Nothing -> return (Error "Input error" [] "getColoredInputLine")
     Just str -> return (Content str)
 
 -- ┌─────────────────────────────────┐
@@ -144,7 +144,7 @@ getColoredInputLine pref = do
 -- └─────────────────────────────────┘
 
 printGeneral :: (String -> InputT IO ()) -> Output String -> Action String
-printGeneral _ (Error str trace) = return (Error str trace)
+printGeneral _ (Error str trace call) = return (Error str trace call)
 printGeneral f (Content str) = do
   f . ("| " ++) . color "34" $ str
   return $ Content str
@@ -190,15 +190,15 @@ evalOnce SUBS = withThree substitute parseOutput' getVar parseOutput' (unparse T
   where
     getVar :: String -> Output Int
     getVar str = case parseOutput' str of
-      Error str' trace -> Error str' trace
+      Error str' trace call -> Error str' trace call
       Content (Var n) -> Content n
-      _ -> Error "Expression is not a variable" str
+      _ -> Error "Expression is not a variable" str "evalOnce:SUBS"
 evalOnce REDUCE = (printLn . fmap (unparse True True . reduce)) <.> parseWithBindings'
 evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parseOutput' readOutput (unparse True True) "LIMIT"
 evalOnce STEPS = print' <.> parseWithBindings'
   where
     print' :: Output Lambda -> Action String
-    print' (Error str trace) = return (Error str trace)
+    print' (Error str trace call) = return (Error str trace call)
     print' (Content l) = showSteps l
     showSteps :: Lambda -> Action String
     showSteps l = do
@@ -206,7 +206,7 @@ evalOnce STEPS = print' <.> parseWithBindings'
       _ <- printGeneral outputStr (Content lstr)
       input <- getColoredInputLine ""
       case input of
-        Error _ _ -> return (Content lstr)
+        Error {} -> return (Content lstr)
         _ -> do
           let (l', found) = reduceStep l
           if found
@@ -223,18 +223,21 @@ evalOnce WITHBIND = withTwo (flip replaceChar) Content parseBinding id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Content extractChar Content id ("ASSIGN TO", "IN")
   where
     extractChar :: String -> Output Char
-    extractChar [] = Error "No binding name provided" []
+    extractChar [] = Error "No binding name provided" [] "evalOnce:ASSIGN"
     extractChar (char:rest)
       | null rest = Content char
-      | otherwise = Error "Binding names must be single-character" []
+      | otherwise = Error "Binding names must be single-character" [] "evalOnce:ASSIGN"
 
 -- ┌────────────────┐
 -- │ Error handling │
 -- └────────────────┘
 
-printError :: String -> String -> InputT IO ()
-printError str [] = outputStrLn $ color "1;31" "error: " ++ str ++ "."
-printError str trace = outputStrLn $ color "1;31" "error: " ++ str ++ ": " ++ color "33" trace
+printError :: String -> String -> String -> InputT IO ()
+printError str [] [] = outputStrLn $ color "1;31" "error: " ++ str ++ "."
+printError str [] call = outputStrLn $ color "1;31" "error: " ++ str ++ ". (from " ++ color "33" call ++ ")"
+printError str trace [] = outputStrLn $ color "1;31" "error: " ++ str ++ ": " ++ color "33" trace
+printError str trace call =
+  outputStrLn $ color "1;31" "error: " ++ str ++ ": " ++ color "33" trace ++ " (from " ++ color "33" call ++ ")"
 
 -- ┌──────────────────────────────────┐
 -- │ Command piping and mode changing │
@@ -244,7 +247,7 @@ handleCommand :: String -> Bindings -> (Mode -> Bindings -> String -> Action Str
 handleCommand input bindings f = do
   let
     splitByFirstSpace :: String -> Output Int
-    splitByFirstSpace [] = Error "Cannot split an empty string" []
+    splitByFirstSpace [] = Error "Cannot split an empty string" [] "handleCommand"
     splitByFirstSpace (' ':_) = Content 0
     splitByFirstSpace (_:rest) = (+ 1) <$> splitByFirstSpace rest
     mn = splitByFirstSpace input
@@ -252,10 +255,10 @@ handleCommand input bindings f = do
     let mode = take n input
         input' = drop (n+1) input
     if notMember mode modeMap
-    then return (Error "Invalid mode" mode)
+    then return (Error "Invalid mode" mode "handleCommand")
     else
       if null input'
-      then return (Error "No input given" [])
+      then return (Error "No input given" [] "handleCommand")
       else f (modeMap ! mode) bindings input'
 
 pipeCommand :: Mode -> Mode -> Bindings -> String -> Action String
@@ -265,7 +268,7 @@ pipeCommand basemode curmode bindings input = do
 
 eval :: Mode -> Bindings -> String -> Action String
 eval mode bindings input = case input of
-  [] -> return (Error "No input given" [])
+  [] -> return (Error "No input given" [] "eval")
   (' ':rest) -> eval mode bindings rest
   ('<':rest) -> handleCommand rest bindings (pipeCommand mode)
   ('>':rest) -> handleCommand rest bindings (`pipeCommand` mode)
@@ -282,7 +285,7 @@ loop :: Mode -> [String] -> Bindings -> InputT IO ()
 loop mode history bindings = do
   minput <- getColoredInputLine $ getPrompt '#' (show mode)
   case minput of
-    Error _ _ -> return ()
+    Error {} -> return ()
     Content [] -> loop mode history bindings
     Content "help" -> helpAction >> loop mode history bindings
     Content "bindings" -> do
@@ -295,15 +298,11 @@ loop mode history bindings = do
     Content "exit" -> return ()
     Content ":q" -> return ()
     Content ('+':rest) -> case parseBinding rest of
-      Error str trace -> do
-        printError str trace
-        loop mode history bindings
+      Error str trace call -> printError str trace call >> loop mode history bindings
       Content (name, binding) -> do
         mbinding <- eval RETURN bindings binding
         case mbinding of
-          Error str trace -> do
-            printError str trace
-            loop mode history bindings
+          Error str trace call -> printError str trace call >> loop mode history bindings
           Content truebinding -> loop mode history (insert name truebinding bindings)
     Content ('|':rest) -> action
       where
@@ -311,9 +310,7 @@ loop mode history bindings = do
         action
           | null rest = loop RETURN history bindings
           | member rest modeMap = loop (modeMap ! rest) history bindings
-          | otherwise = do
-              printError "Invalid mode" rest
-              loop mode history bindings
+          | otherwise = printError "Invalid mode" rest "loop" >> loop mode history bindings
     Content ('^':rest) -> action
       where
         countDistance :: String -> Int
@@ -328,44 +325,36 @@ loop mode history bindings = do
         action :: InputT IO ()
         action
           | distance >= length history = do
-              printError "History length out of bounds" (show $ distance + 1)
+              printError "History length out of bounds" (show $ distance + 1) "loop"
               loop mode history bindings
           | null cmd = do
               moutput <- eval mode bindings (history !! distance)
               case moutput of
-                Error str trace -> do
-                  printError str trace
-                  loop mode history bindings
+                Error str trace call -> printError str trace call >> loop mode history bindings
                 Content output -> loop mode (output +| history) bindings
           | head cmd == '+' = case tail cmd of
-              [] -> printError "No name given" [] >> loop mode history bindings
+              [] -> printError "No name given" [] "loop" >> loop mode history bindings
               str -> case removeSpaces str of
                 [char] -> loop mode history (insert char (history !! distance) bindings)
-                _ -> printError "Names must be single-character" [] >> loop mode history bindings
+                _ -> printError "Names must be single-character" [] "loop" >> loop mode history bindings
           | not (null cmd) && notMember cmd modeMap = do
-              printError "Invalid mode" cmd
+              printError "Invalid mode" cmd "loop"
               loop mode history bindings
           | otherwise = do
               let curmode = if null cmd then mode else modeMap ! cmd
               moutput <- eval curmode bindings (history !! distance)
               case moutput of
-                Error str trace -> do
-                  printError str trace
-                  loop mode history bindings
+                Error str trace call -> printError str trace call >> loop mode history bindings
                 Content output -> loop mode (output +| history) bindings
     Content ('@':rest) -> do
       moutput <- handleCommand rest bindings eval
       case moutput of
-        Error str trace -> do
-          printError str trace
-          loop mode history bindings
+        Error str trace call -> printError str trace call >> loop mode history bindings
         Content output -> loop mode (output +| history) bindings
     Content input -> do
       moutput <- eval mode bindings input
       case moutput of
-        Error str trace -> do
-          printError str trace
-          loop mode history bindings
+        Error str trace call -> printError str trace call >> loop mode history bindings
         Content output -> loop mode (output +| history) bindings
 
 -- ┌───────────────────┐
@@ -436,6 +425,6 @@ main = do
   args <- getArgs
   let opts = parseOptions args
   runInputT settings $ case opts of
-    Options { errorOpt = Just str } -> printError "Unrecognized option" str
+    Options { errorOpt = Just str } -> printError "Unrecognized option" str "main"
     Options { helpOpt = True } -> helpAction
     _ -> loop (modeOpt opts) [] empty
