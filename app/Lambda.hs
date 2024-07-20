@@ -3,7 +3,7 @@ module Lambda where
 import Control.Monad
 import Data.Char (isAlpha, isDigit)
 import Data.List (elemIndex)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust)
 import Text.Read (readMaybe)
 import Data.Set (Set, empty, insert, delete, union, intersection, difference, singleton, findMax, toList, member)
 
@@ -179,16 +179,16 @@ preprocess (char:str) = char : preprocess str
 
 parse :: String -> Maybe Lambda
 parse [] = Nothing
-parse ('v' : rest)
-  | isJust num =  fmap Var num
-  | allPrimes rest = Just $ Var $ length rest
-  where
-    num :: Maybe Int
-    num = readMaybe rest
-    allPrimes :: String -> Bool
-    allPrimes [] = True
-    allPrimes ('\'':rest') = allPrimes rest'
-    allPrimes _ = False
+parse ('v' : rest) = fmap Var (readMaybe rest)
+  -- | isJust num =  fmap Var num
+  -- | allPrimes rest = Just $ Var $ length rest
+  -- where
+  --   num :: Maybe Int
+  --   num = readMaybe rest
+  --   allPrimes :: String -> Bool
+  --   allPrimes [] = True
+  --   allPrimes ('\'':rest') = allPrimes rest'
+  --   allPrimes _ = False
 parse [var]
   | var `elem` varSet = Just $ Var (fromJust $ elemIndex var varSet)
   | otherwise = Nothing
@@ -210,7 +210,7 @@ parse str
     object = head objects
 parse ('[':rest) = raise pair (parse s1) (parse s2)
   where
-    (s1, rest') = splitAt (findSemicolon rest) rest--(take semicolonN rest, drop semicolonN rest)
+    (s1, rest') = splitAt (findSemicolon rest) rest
     (s2, _) = splitAt (findClosingBracket (tail rest') 0) (tail rest')
     findSemicolon :: String -> Int
     findSemicolon [] = 0
