@@ -2,7 +2,6 @@ module Main where
 
 import Lambda
 import System.Console.Haskeline
-import System.Environment (getArgs)
 import Data.Map (Map, empty, insert, member, notMember, (!), elems, singleton)
 import qualified Data.Map as M
 import Text.Read (readMaybe)
@@ -15,7 +14,6 @@ data Mode = RETURN | REPEAT
   | PRINT | EXPAND | SUBS | REDUCE | REDUCELIMIT | STEPS
   | CONGR | EQUIV
   | SHOW | READ
-  | TOFORMAL | TOINFORMAL
   | LET | WITHBIND | ASSIGN
   deriving (Read, Show)
 
@@ -54,13 +52,11 @@ commandList = [
     ("sb", "subs", SUBS, "substitutes a given expression in place of a given variable"),
     ("r", "reduce", REDUCE, "reduces a given lambda expression and prints it"),
     ("rl", "reducelimit", REDUCELIMIT, "gives control over the depth of reduction"),
-    ("rs", "steps", STEPS, "enters a step-by-step reduction process"),
+    ("s", "steps", STEPS, "enters a step-by-step reduction process"),
     ("cr", "congr", CONGR, "prints whether two given expressions are congruent (with variable replacement)"),
     ("eq", "equiv", EQUIV, "prints whether two given expressions are reducible to the same one"),
     ("sh", "show", SHOW, "prints the internal representation of a lambda expression"),
     ("rd", "read", READ, "evaluates a given internal representation and prints it"),
-    ("tf", "toformal", TOFORMAL, "converts to the formal notation"),
-    ("ti", "toinformal", TOINFORMAL, "converts to the informal notation"),
     ("lt", "let", LET, "allows to set a binding, order (binding, expression)"),
     ("wb", "withbind", WITHBIND, "allows to set a binding, order (expression, binding)"),
     ("as", "assign", ASSIGN, "a three-step action similar to LET and WITHBIND, but allows piping into bindings")
@@ -202,7 +198,7 @@ evalOnce STEPS = print' <.> parseWithBindings'
     print' (Content l) = showSteps l
     showSteps :: Lambda -> Action String
     showSteps l = do
-      let lstr = unparse True False l
+      let lstr = unparse True True l
       _ <- printGeneral outputStr (Content lstr)
       input <- getColoredInputLine ""
       case input of
@@ -216,8 +212,6 @@ evalOnce CONGR = withTwo congr parseOutput' parseOutput' show "AND"
 evalOnce EQUIV = withTwo equiv parseOutput' parseOutput' show "AND"
 evalOnce SHOW = (printLn . fmap show) <.> parseWithBindings'
 evalOnce READ = \_ -> printLn . fmap (unparse True False) . readOutput
-evalOnce TOFORMAL = (printLn . fmap unparseFormal) <.> parseWithBindings'
-evalOnce TOINFORMAL = (printLn . fmap (unparse True False)) <.> parseWithBindings'
 evalOnce LET = withTwo replaceChar parseBinding Content id "IN"
 evalOnce WITHBIND = withTwo (flip replaceChar) Content parseBinding id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Content extractChar Content id ("ASSIGN TO", "IN")
@@ -362,22 +356,6 @@ loop mode history bindings = do
 -- │ Building the REPL │
 -- └───────────────────┘
 
-data Options = Options {
-    helpOpt :: Bool,
-    modeOpt :: Mode,
-    errorOpt :: Maybe String
-  }
-
-parseOptions :: [String] -> Options
-parseOptions [] = Options { helpOpt = False, modeOpt = RETURN, errorOpt = Nothing }
-parseOptions (opt:rest)
-  | opt == "-h" || opt == "--help" = (parseOptions rest) { helpOpt = True }
-  | (opt == "-m" || opt == "--mode") && not (null rest) && member mode modeMap =
-    (parseOptions (tail rest)) { modeOpt = modeMap ! mode }
-  | otherwise = Options { errorOpt = Just opt, helpOpt = False, modeOpt = REPEAT }
-  where
-    mode = head rest
-
 helpAction :: InputT IO ()
 helpAction = do
   let
@@ -422,10 +400,4 @@ settings = Settings {
 }
 
 main :: IO ()
-main = do
-  args <- getArgs
-  let opts = parseOptions args
-  runInputT settings $ case opts of
-    Options { errorOpt = Just str } -> printError "Unrecognized option" str "main"
-    Options { helpOpt = True } -> helpAction
-    _ -> loop (modeOpt opts) [] empty
+main = runInputT settings (loop REPEAT [] empty)

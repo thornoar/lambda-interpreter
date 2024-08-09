@@ -396,3 +396,48 @@
 --             Just str3 -> do
 --               mstr3' <- eval RETURN str3
 --               printLn $ mstr3' >>= f str1 str2'
+
+
+  -- | TOFORMAL | TOINFORMAL
+
+    -- ("tf", "toformal", TOFORMAL, "converts to the formal notation"),
+    -- ("ti", "toinformal", TOINFORMAL, "converts to the informal notation"),
+
+-- evalOnce TOFORMAL = (printLn . fmap unparseFormal) <.> parseWithBindings'
+-- evalOnce TOINFORMAL = (printLn . fmap (unparse True False)) <.> parseWithBindings'
+
+-- import System.Environment (getArgs)
+
+-- unparseFormal :: Lambda -> String
+-- unparseFormal (Var n) = varSetFormal !! n
+-- unparseFormal (Abst n l) = "(\\" ++ unparseFormal (Var n) ++ unparseFormal l ++ ")"
+-- unparseFormal (Appl l1 l2) = "(" ++ unparseFormal l1 ++ unparseFormal l2 ++ ")"
+
+
+-- main = do
+--   args <- getArgs
+--   let opts = parseOptions args
+--   runInputT settings $ case opts of
+--     Options { errorOpt = Just str } -> printError "Unrecognized option" str "main"
+--     Options { helpOpt = True } -> helpAction
+--     _ -> loop (modeOpt opts) [] empty
+
+-- data Options = Options {
+--     helpOpt :: Bool,
+--     modeOpt :: Mode,
+--     errorOpt :: Maybe String
+--   }
+--
+-- parseOptions :: [String] -> Options
+-- parseOptions [] = Options { helpOpt = False, modeOpt = REPEAT, errorOpt = Nothing }
+-- parseOptions (opt:rest)
+--   | opt == "-h" || opt == "--help" = (parseOptions rest) { helpOpt = True }
+--   | (opt == "-m" || opt == "--mode") && not (null rest) && member mode modeMap =
+--     (parseOptions (tail rest)) { modeOpt = modeMap ! mode }
+--   | otherwise = Options { errorOpt = Just opt, helpOpt = False, modeOpt = REPEAT }
+--   where
+--     mode = head rest
+
+-- wrapNotVar :: (Lambda -> String) -> Lambda -> String
+-- wrapNotVar f (Var n) = f (Var n)
+-- wrapNotVar f l = "(" ++ f l ++ ")"

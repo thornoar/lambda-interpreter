@@ -224,12 +224,15 @@ parseJust :: String -> Lambda
 parseJust = fromJust . parse
 
 wrapAbst :: (Lambda -> String) -> Lambda -> String
-wrapAbst f (Abst n l) = "(" ++ f (Abst n l) ++ ")"
-wrapAbst f l = f l
+wrapAbst f l = case f l of
+  [a] -> [a]
+  str -> case l of
+    Abst _ _ -> "(" ++ str ++ ")"
+    _ -> str
 
-wrapNotVar :: (Lambda -> String) -> Lambda -> String
-wrapNotVar f (Var n) = f (Var n)
-wrapNotVar f l = "(" ++ f l ++ ")"
+wrapNotSingle :: String -> String
+wrapNotSingle [a] = [a]
+wrapNotSingle str = "(" ++ str ++ ")"
 
 recognizeChurch :: Lambda -> Maybe Int
 recognizeChurch (Abst n1 (Abst n2 l)) = f l
@@ -282,12 +285,7 @@ unparse sugar alias (Abst n (Abst m l))
   | otherwise = "\\" ++ unparse False alias (Var n) ++ "." ++ unparse False alias (Abst m l)
 unparse sugar alias (Abst n l) =
   "\\" ++ unparse sugar alias (Var n) ++ (if sugar then ". " else ".") ++ wrapAbst (unparse sugar alias) l
-unparse sugar alias (Appl l1 l2) = wrapAbst (unparse sugar alias) l1 ++ wrapNotVar (unparse sugar alias) l2
-
-unparseFormal :: Lambda -> String
-unparseFormal (Var n) = varSetFormal !! n
-unparseFormal (Abst n l) = "(\\" ++ unparseFormal (Var n) ++ unparseFormal l ++ ")"
-unparseFormal (Appl l1 l2) = "(" ++ unparseFormal l1 ++ unparseFormal l2 ++ ")"
+unparse sugar alias (Appl l1 l2) = wrapAbst (unparse sugar alias) l1 ++ wrapNotSingle (unparse sugar alias l2)
 
 -- ┌───────────────────────────┐
 -- │ the logic of lambda terms │
