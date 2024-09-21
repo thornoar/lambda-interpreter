@@ -266,7 +266,6 @@ eval mode bindings input = case input of
   (' ':rest) -> eval mode bindings rest
   ('<':rest) -> handleCommand rest bindings (pipeCommand mode)
   ('>':rest) -> handleCommand rest bindings (`pipeCommand` mode)
-  -- ('@':rest) -> handleCommand rest bindings eval
   other -> evalOnce mode bindings other
 
 (+|) :: String -> [String] -> [String]
@@ -327,7 +326,6 @@ loop mode history bindings = do
                 Error str trace call -> printError str trace call >> loop mode history bindings
                 Content output -> loop mode (output +| history) bindings
           | head cmd == '+' = case tail cmd of
-              -- _ -> printError "error" [] []
               [] -> printError "No name given" [] "loop" >> loop mode history bindings
               str -> case removeSpaces str of
                 [char] -> loop mode history (insert char (history !! distance) bindings)
