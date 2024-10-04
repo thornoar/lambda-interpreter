@@ -297,7 +297,7 @@ loop mode history bindings = do
         case mbinding of
           Error str trace call -> printError str trace call >> loop mode history bindings
           Content truebinding -> loop mode history (insert name truebinding bindings)
-    Content ('|':rest) -> action
+    Content ('s':'e':'t':' ':rest) -> action
       where
         action :: InputT IO ()
         action
@@ -375,10 +375,12 @@ helpAction = do
   outputStrLn "\nflags:"
   getFlagInfo ("  -h,", "--help", "helps")
   getFlagInfo ("  -m,", "--MODE", "sets the initial MODE")
-  outputStrLn "\nREPL usage: [>MODE | <MODE | @MODE | ^MODE] [LAMBDA]"
+  outputStrLn "\nREPL usage: [ set MODE | >MODE | <MODE | @MODE | ^MODE ] [LAMBDA]"
   outputStrLn "\nmode prefixes:"
-  outputStrLn $ calibrateLengthPost (l1+l2) "  >MODE"
+  outputStrLn $ calibrateLengthPost (l1+l2) "  set MODE"
     ++ "enter the specified mode."
+  outputStrLn $ calibrateLengthPost (l1+l2) "  >MODE ARG"
+    ++ "run the current mode with the given argument and pipe the result into the specified MODE."
   outputStrLn $ calibrateLengthPost (l1+l2) "  <MODE ARG"
     ++ "run the specified mode with the given argument and pipe the result into the current MODE."
   outputStrLn $ calibrateLengthPost (l1+l2) "  @MODE ARG"
