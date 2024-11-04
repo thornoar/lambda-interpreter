@@ -16,7 +16,7 @@
     in
     {
         # packages.${system}.default = myHaskellPackages.lambda-interpreter;
-        packages.${system}.default = pkgs.haskellPackages.callCabalnix "lambda-interpreter" ./. { };
+        packages.${system}.default = pkgs.haskellPackages.callCabal2nix "lambda-interpreter" ./. { };
         apps.${system}.default = {
             type = "app";
             program = "${self.packages.${system}.default}/bin/lambda-interpreter";
