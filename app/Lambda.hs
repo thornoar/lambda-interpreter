@@ -44,11 +44,11 @@ getCombinedTerms (var : rest)
     n3 :: Int
     n3 = findClosingBracket rest 0
 
-raise :: (Monad m) => (a -> b -> c) -> m a -> m b -> m c
-raise f ma mb = mb >>= raise' f ma
-  where
-    raise' :: (Monad m) => (a -> b -> c) -> m a -> b -> m c
-    raise' f' ma' b' = fmap (`f'` b') ma'
+-- raise :: (Monad m) => (a -> b -> c) -> m a -> m b -> m c
+-- raise f ma mb = mb >>= raise' f ma
+--   where
+--     raise' :: (Monad m) => (a -> b -> c) -> m a -> b -> m c
+--     raise' f' ma' b' = fmap (`f'` b') ma'
 
 -- ┌───────────────────────────┐
 -- │ the lambda calculus model │
@@ -195,15 +195,15 @@ parse ('\\' : 'v' : char : rest)
         f acc (char':rest'') = f (acc ++ [char']) rest''
         (numStr, rest') = f [] (char:rest)
         var = numStr >>= readMaybe
-     in raise Abst var (rest' >>= parse')
-parse ('\\' : var : '.' : rest) = raise Abst (elemIndex var varSet) (parse rest)
+     in liftA2 Abst var (rest' >>= parse')
+parse ('\\' : var : '.' : rest) = liftA2 Abst (elemIndex var varSet) (parse rest)
 parse str
-  | length objects > 1 = raise Appl (parse $ join (init objects)) (parse $ last objects)
+  | length objects > 1 = liftA2 Appl (parse $ join (init objects)) (parse $ last objects)
   | head object == '(' = parse (init . tail $ object)
   where
     objects = getCombinedTerms str
     object = head objects
-parse ('[':rest) = raise pair (parse s1) (parse s2)
+parse ('[':rest) = liftA2 pair (parse s1) (parse s2)
   where
     (s1, rest') = splitAt (findSemicolon rest) rest
     (s2, _) = splitAt (findClosingBracket (tail rest') 0) (tail rest')
