@@ -14,6 +14,7 @@ data Mode = RETURN | REPEAT
   | PRINT | EXPAND | SUBS | REDUCE | REDUCELIMIT | STEPS
   | CONGR | EQUIV
   | SHOW | READ
+  | TOTALVARS | BOUNDVARS | FREEVARS
   | LET | WITHBIND | ASSIGN
   deriving (Read, Show)
 
@@ -57,6 +58,9 @@ commandList = [
     ("eq", "equiv", EQUIV, "prints whether two given expressions are reducible to the same one"),
     ("sh", "show", SHOW, "prints the internal representation of a lambda expression"),
     ("rd", "read", READ, "evaluates a given internal representation and prints it"),
+    ("tv", "read", TOTALVARS, "prints the total variable set of a lambda term"),
+    ("bv", "read", BOUNDVARS, "prints the bound variable set of a lambda term"),
+    ("fv", "read", FREEVARS, "prints the free variable set of a lambda term"),
     ("lt", "let", LET, "allows to set a binding, order (binding, expression)"),
     ("wb", "withbind", WITHBIND, "allows to set a binding, order (expression, binding)"),
     ("as", "assign", ASSIGN, "a three-step action similar to LET and WITHBIND, but allows piping into bindings")
@@ -190,7 +194,7 @@ evalOnce SUBS = withThree substitute parseOutput' getVar parseOutput' (unparse T
       Content (Var n) -> Content n
       _ -> Error "Expression is not a variable" str "evalOnce:SUBS"
 evalOnce REDUCE = (printLn . fmap (unparse True True . reduce)) <.> parseWithBindings'
-evalOnce REDUCELIMIT = withTwo (flip $ reduceWithLimit 0) parseOutput' readOutput (unparse True True) "LIMIT"
+evalOnce REDUCELIMIT = withTwo (flip reduceWithLimit) parseOutput' readOutput (unparse True True) "LIMIT"
 evalOnce STEPS = print' <.> parseWithBindings'
   where
     print' :: Output Lambda -> Action String
@@ -212,6 +216,9 @@ evalOnce CONGR = withTwo congr parseOutput' parseOutput' show "AND"
 evalOnce EQUIV = withTwo equiv parseOutput' parseOutput' show "AND"
 evalOnce SHOW = (printLn . fmap show) <.> parseWithBindings'
 evalOnce READ = \_ -> printLn . fmap (unparse True False) . readOutput
+evalOnce TOTALVARS = (printLn . fmap (printVarSet True . totalVarSet)) <.> parseWithBindings'
+evalOnce BOUNDVARS = (printLn . fmap (printVarSet True . boundVarSet)) <.> parseWithBindings'
+evalOnce FREEVARS = (printLn . fmap (printVarSet True . freeVarSet)) <.> parseWithBindings'
 evalOnce LET = withTwo replaceChar parseBinding Content id "IN"
 evalOnce WITHBIND = withTwo (flip replaceChar) Content parseBinding id "WITH"
 evalOnce ASSIGN = withThree (flip . curry $ replaceChar) Content extractChar Content id ("ASSIGN TO", "IN")

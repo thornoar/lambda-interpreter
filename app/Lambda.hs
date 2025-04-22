@@ -2,7 +2,7 @@ module Lambda where
 
 import Control.Monad
 import Data.Char (isAlpha, isDigit)
-import Data.List (elemIndex)
+import Data.List (elemIndex, intercalate)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
 import Data.Set (Set, empty, insert, delete, union, intersection, difference, singleton, findMax, toList, member)
@@ -64,32 +64,39 @@ type Variable = Int
 data Lambda = Var Variable | Abst Variable Lambda | Appl Lambda Lambda deriving (Read, Show, Eq)
 
 combinatorI :: Lambda
-combinatorI = parseJust "\\x.x"
+combinatorI = Abst 0 (Var 0)
 
 combinatorK :: Lambda
-combinatorK = parseJust "\\x.\\y.x"
+combinatorK = Abst 0 (Abst 1 (Var 0))
 true :: Lambda
 true = combinatorK
 
 combinatorK' :: Lambda
-combinatorK' = parseJust "\\x.\\y.y"
+combinatorK' = Abst 0 (Abst 1 (Var 1))
 false :: Lambda
 false = combinatorK'
 
 combinatorS :: Lambda
-combinatorS = parseJust "\\x.\\y.\\z.xz(yz)"
+combinatorS = Abst 0 (Abst 1 (Abst 2 (Appl (Appl (Var 0) (Var 2)) (Appl (Var 1) (Var 2)))))
 
 combinatorY :: Lambda
-combinatorY = parseJust "\\f.(\\x.f(xx))(\\x.f(xx))"
+-- combinatorY = parseJust "\\f.(\\x.f(xx))(\\x.f(xx))"
+combinatorY = Abst 1 (Appl (Abst 0 (Appl (Var 1) (Appl (Var 0) (Var 0)))) (Abst 0 (Appl (Var 1) (Appl (Var 0) (Var 0)))))
 
 combinatorOmega :: Lambda
-combinatorOmega = parseJust "(\\x.xx)(\\x.xx)"
+-- combinatorOmega = parseJust "(\\x.xx)(\\x.xx)"
+combinatorOmega = Appl (Abst 0 $ Appl (Var 0) (Var 0)) (Abst 0 $ Appl (Var 0) (Var 0))
 
 combinatorNeg :: Lambda
-combinatorNeg = parseJust "\\x.x(\\u.\\w.w)(\\u.\\w.u)"
+combinatorNeg = Abst 0 (Appl (Appl (Var 0) (Abst 4 (Abst 3 (Var 3)))) (Abst 4 (Abst 3 (Var 4))))
+
+power :: Int -> Lambda -> Lambda
+power 1 l = l
+power 0 _ = combinatorI
+power n l = Appl (power (n-1) l) l
 
 omegaSmall :: Int -> Lambda
-omegaSmall n = parseJust $ "\\x." ++ replicate n 'x'
+omegaSmall n = Abst 0 (power n (Var 0))
 
 omegaBig :: Int -> Lambda
 omegaBig n = Appl (omegaSmall n) (omegaSmall n)
@@ -98,17 +105,17 @@ church :: Int -> Lambda
 church 0 = adjustBoundVars $ Abst 0 (Abst 1 (Var 1))
 church n = Abst 0 (Abst 1 $ Appl (Var 0) (reduce $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)))
 zeroChurch :: Lambda
-zeroChurch = parseJust "\\x.x((\\y.\\z.y)(\\y.\\z.z))(\\y.\\z.y)"
+zeroChurch = Abst 0 (Appl (Appl (Var 0) (Appl (Abst 1 (Abst 2 (Var 1))) (Abst 1 (Abst 2 (Var 2))))) (Abst 1 (Abst 2 (Var 1))))
 succChurch :: Lambda
-succChurch = parseJust "\\f.\\x.\\y.fx(xy)"
+succChurch = Abst 2 (Abst 0 (Abst 1 (Appl (Appl (Var 2) (Var 0)) (Appl (Var 0) (Var 1)))))
 prevChurch :: Lambda
-prevChurch = parseJust "\\x.\\y.\\z.x(\\p.\\q.q(py))((\\u.\\w.u)z)(\\t.t)"
+prevChurch = Abst 0 (Abst 1 (Abst 2 (Appl (Appl (Appl (Var 0) (Abst 14 (Abst 15 (Appl (Var 15) (Appl (Var 14) (Var 1)))))) (Abst 3 (Var 2))) (Abst 16 (Var 16)))))
 addChurch :: Lambda
-addChurch = parseJust "\\x.\\y.\\p.\\q.xp(ypq)"
+addChurch = Abst 0 (Abst 1 (Abst 14 (Abst 15 (Appl (Appl (Var 0) (Var 14)) (Appl (Appl (Var 1) (Var 14)) (Var 15))))))
 multChurch :: Lambda
-multChurch = parseJust "\\x.\\y.\\z.x(yz)"
+multChurch = Abst 0 (Abst 1 (Abst 2 (Appl (Var 0) (Appl (Var 1) (Var 2)))))
 expChurch :: Lambda
-expChurch = parseJust "\\x.\\y.yx"
+expChurch = Abst 0 (Abst 1 (Appl (Var 1) (Var 0)))
 
 pair :: Lambda -> Lambda -> Lambda
 pair l1 l2 = Abst n (Appl (Appl (Var n) l1) l2)
@@ -119,11 +126,11 @@ barend :: Int -> Lambda
 barend 0 = combinatorI
 barend n = pair false (barend $ n - 1)
 zeroBarend :: Lambda
-zeroBarend = parseJust "\\x.x(\\y.\\z.y)"
+zeroBarend = Abst 0 (Appl (Var 0) (Abst 2 (Abst 1 (Var 2))))
 succBarend :: Lambda
-succBarend = parseJust "\\f.\\x.x(\\y.\\z.z)f"
+succBarend = Abst 11 (Abst 0 (Appl (Appl (Var 0) (Abst 2 (Abst 1 (Var 1)))) (Var 11)))
 prevBarend :: Lambda
-prevBarend = parseJust "\\f.f(\\x.\\y.y)"
+prevBarend = Abst 11 (Appl (Var 11) (Abst 0 (Abst 1 (Var 1))))
 
 -- ┌──────────────────────┐
 -- │ Parsing lambda terms │
@@ -220,8 +227,8 @@ parse ('[':rest) = liftA2 pair (parse s1) (parse s2)
     findClosingBracket (_ : str) step = 1 + findClosingBracket str step
 parse _ = Nothing
 
-parseJust :: String -> Lambda
-parseJust = fromJust . parse
+-- parseJust :: String -> Lambda
+-- parseJust = fromJust . parse
 
 wrapAbst :: (Lambda -> String) -> Lambda -> String
 wrapAbst f l = case f l of
@@ -255,6 +262,12 @@ recognizeBarend l
       else Nothing
     _ -> Nothing
 
+getVarName :: Bool -> Variable -> String
+getVarName sugar n
+  | n < length varSet = [varSet !! n]
+  | sugar = 'v' : show n
+  | otherwise = varSetFormal !! n
+
 unparse :: Bool -> Bool -> Lambda -> String
 unparse _ True l
   | congr l combinatorI = "I"
@@ -262,30 +275,22 @@ unparse _ True l
   | congr l combinatorK' = "K*"
   | congr l combinatorS = "S"
   | congr l combinatorY = "Y"
-  | congr l combinatorOmega = "O" 
-  | isChurch = "c:" ++ (show . fromJust $ theChurch)
-  | isBarend = "b:" ++ (show . fromJust $ theBarend)
+  | congr l combinatorOmega = "O"
+  | isJust theChurch = "c:" ++ (show . fromJust $ theChurch)
+  | isJust theBarend = "b:" ++ (show . fromJust $ theBarend)
     where
       theChurch = recognizeChurch l
-      isChurch = case theChurch of
-        Nothing -> False
-        Just _ -> True
       theBarend = recognizeBarend l
-      isBarend = case theBarend of
-        Nothing -> False
-        Just _ -> True
-unparse sugar _ (Var n)
-  | n < length varSet = [varSet !! n]
-  | sugar = 'v' : show n
-  | otherwise = varSetFormal !! n
+unparse sugar _ (Var n) = getVarName sugar n
 unparse sugar alias (Abst n (Abst m l))
   | sugar = "\\" ++ unparse True alias (Var n) ++ case unparse True alias (Abst m l) of
       '\\' : str -> ',' : str
       str -> '.' : str
   | otherwise = "\\" ++ unparse False alias (Var n) ++ "." ++ unparse False alias (Abst m l)
 unparse sugar alias (Abst n l) =
-  "\\" ++ unparse sugar alias (Var n) ++ (if sugar then ". " else ".") ++ wrapAbst (unparse sugar alias) l
-unparse sugar alias (Appl l1 l2) = wrapAbst (unparse sugar alias) l1 ++ wrapNotSingle (unparse sugar alias l2)
+  "\\" ++ unparse sugar alias (Var n) ++ (if sugar then ". " else ".") ++ unparse sugar alias l
+unparse sugar alias (Appl (Abst v l1) l2) = "(" ++ unparse sugar alias (Abst v l1) ++ ")" ++ wrapNotSingle (unparse sugar alias l2)
+unparse sugar alias (Appl l1 l2) = unparse sugar alias l1 ++ wrapNotSingle (unparse sugar alias l2)
 
 -- ┌───────────────────────────┐
 -- │ the logic of lambda terms │
@@ -306,6 +311,9 @@ freeVarSet (Var n) = singleton n
 freeVarSet (Abst n l) = delete n $ freeVarSet l
 freeVarSet (Appl l1 l2) = freeVarSet l1 `union` freeVarSet l2
 
+printVarSet :: Bool -> Set Variable -> String
+printVarSet sugar vars = "{" ++ (intercalate ", " . map (getVarName sugar) . toList) vars ++ "}"
+
 isValid :: Lambda -> Bool
 isValid (Var _) = True
 isValid (Abst n l) = n `notElem` boundVarSet l && isValid l
@@ -325,9 +333,9 @@ parse' str = adjustBoundVars <$> parse (preprocess str)
 parseJust' :: String -> Lambda
 parseJust' = fromJust . parse'
 
--- ┌───────────────────────┐
--- │ Lambda transformation │
--- └───────────────────────┘
+-- ┌────────────────────────────┐
+-- │ lambda term transformation │
+-- └────────────────────────────┘
 
 substitute :: Lambda -> Variable -> Lambda -> Lambda
 substitute src var expr
@@ -345,11 +353,11 @@ substitute src var expr
     substitute' (Appl src1' src2') m expr' = Appl (substitute' src1' m expr') (substitute' src2' m expr')
 
 substituteVar :: Lambda -> Variable -> Variable -> Lambda
-substituteVar (Var n') from to
-  | n' == from = Var to
-  | otherwise = Var n'
-substituteVar (Abst n' l') from to = Abst n' $ substituteVar l' from to
-substituteVar (Appl l1' l2') from to = Appl (substituteVar l1' from to) (substituteVar l2' from to)
+substituteVar (Var n) from to
+  | n == from = Var to
+  | otherwise = Var n
+substituteVar (Abst n l) from to = Abst n $ substituteVar l from to
+substituteVar (Appl l1 l2) from to = Appl (substituteVar l1 from to) (substituteVar l2 from to)
 
 changeBoundVar :: Lambda -> Variable -> Variable -> Lambda
 changeBoundVar (Var n) _ _ = Var n
@@ -396,16 +404,16 @@ reduceStep (Abst n l) = (Abst n l', found)
 reduceLimit :: Int
 reduceLimit = 1000
 
-reduceWithLimit :: Int -> Int -> Lambda -> Lambda
-reduceWithLimit n lim l
-  | n >= lim = l
-  | found = reduceWithLimit (n+1) lim l'
+reduceWithLimit :: Int -> Lambda -> Lambda
+reduceWithLimit 0 l = l
+reduceWithLimit lim l
+  | found = reduceWithLimit (lim - 1) l'
   | otherwise = l
   where
     (l', found) = reduceStep l
 
 reduce :: Lambda -> Lambda
-reduce = reduceWithLimit 0 reduceLimit
+reduce = reduceWithLimit reduceLimit
 
 reduce' :: Lambda -> Lambda
 reduce' l
@@ -422,9 +430,9 @@ reduceTimes n l
   where
     (l', found) = reduceStep l
 
--- ┌─────────────┐
--- │ Labda query │
--- └─────────────┘
+-- ┌──────────────┐
+-- │ lambda query │
+-- └──────────────┘
 
 congr :: Lambda -> Lambda -> Bool
 congr (Var n1) (Var n2)
