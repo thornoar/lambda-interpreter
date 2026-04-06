@@ -58,9 +58,9 @@ commandList = [
     ("eq", "equiv", EQUIV, "prints whether two given expressions are reducible to the same one"),
     ("sh", "show", SHOW, "prints the internal representation of a lambda expression"),
     ("rd", "read", READ, "evaluates a given internal representation and prints it"),
-    ("tv", "read", TOTALVARS, "prints the total variable set of a lambda term"),
-    ("bv", "read", BOUNDVARS, "prints the bound variable set of a lambda term"),
-    ("fv", "read", FREEVARS, "prints the free variable set of a lambda term"),
+    ("tv", "totalvars", TOTALVARS, "prints the total variable set of a lambda term"),
+    ("bv", "boundvars", BOUNDVARS, "prints the bound variable set of a lambda term"),
+    ("fv", "freevars", FREEVARS, "prints the free variable set of a lambda term"),
     ("lt", "let", LET, "allows to set a binding, order (binding, expression)"),
     ("wb", "withbind", WITHBIND, "allows to set a binding, order (expression, binding)"),
     ("as", "assign", ASSIGN, "a three-step action similar to LET and WITHBIND, but allows piping into bindings")
@@ -277,8 +277,8 @@ eval mode bindings input = case input of
 
 (+|) :: String -> [String] -> [String]
 str +| [] = [str]
-str +| arr
-  | str == head arr = arr
+str +| arr@(a:_)
+  | str == a = arr
   | otherwise = str : arr
 
 loop :: Mode -> [String] -> Bindings -> InputT IO ()
