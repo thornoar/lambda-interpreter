@@ -1,7 +1,7 @@
 module Lambda where
 
 import Control.Monad
-import Data.Char (isAlpha, isDigit)
+import Data.Char (isAlpha, isDigit, isSpace)
 import Data.List (elemIndex, intercalate)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
@@ -11,14 +11,16 @@ import Data.Set (Set, empty, insert, delete, union, intersection, difference, si
 -- │ the lambda calculus model │
 -- └───────────────────────────┘
 
-varSetFormal :: [String]
-varSetFormal = ['v' : replicate n '\'' | n <- [0 ..]]
+-- varSetFormal :: [String]
+-- varSetFormal = ['v' : replicate n '\'' | n <- [0 ..]]
 
 varSet :: [Char]
 varSet = ['x', 'y', 'z', 'w', 'u', 't', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'p', 'q', 'n', 'm', 'k']
 
 type Variable = Int
 data Lambda = Var Variable | Abst Variable Lambda | Appl Lambda Lambda deriving (Read, Show, Eq)
+
+-- Basic combinators
 
 combinatorI :: Lambda
 combinatorI = Abst 0 (Var 0)
@@ -56,34 +58,46 @@ omegaSmall n = Abst 0 (power n (Var 0))
 omegaBig :: Int -> Lambda
 omegaBig n = let on = omegaSmall n in Appl on on
 
+-- Church numbers
+
 church :: Int -> Lambda
 church 0 = adjustBoundVars $ Abst 0 (Abst 1 (Var 1))
 church n = Abst 0 (Abst 1 $ Appl (Var 0) (reduce $ Appl (Appl (church (n-1)) (Var 0)) (Var 1)))
+
 zeroChurch :: Lambda
 zeroChurch = Abst 0 (Appl (Appl (Var 0) (Appl (Abst 1 (Abst 2 (Var 1))) (Abst 1 (Abst 2 (Var 2))))) (Abst 1 (Abst 2 (Var 1))))
+
 succChurch :: Lambda
 succChurch = Abst 2 (Abst 0 (Abst 1 (Appl (Appl (Var 2) (Var 0)) (Appl (Var 0) (Var 1)))))
+
 prevChurch :: Lambda
 prevChurch = Abst 0 (Abst 1 (Abst 2 (Appl (Appl (Appl (Var 0) (Abst 14 (Abst 15 (Appl (Var 15) (Appl (Var 14) (Var 1)))))) (Abst 3 (Var 2))) (Abst 16 (Var 16)))))
+
 addChurch :: Lambda
 addChurch = Abst 0 (Abst 1 (Abst 14 (Abst 15 (Appl (Appl (Var 0) (Var 14)) (Appl (Appl (Var 1) (Var 14)) (Var 15))))))
+
 multChurch :: Lambda
 multChurch = Abst 0 (Abst 1 (Abst 2 (Appl (Var 0) (Appl (Var 1) (Var 2)))))
+
 expChurch :: Lambda
 expChurch = Abst 0 (Abst 1 (Appl (Var 1) (Var 0)))
 
 pair :: Lambda -> Lambda -> Lambda
 pair l1 l2 = Abst n (Appl (Appl (Var n) l1) l2)
-  where
-    n = 1 + max (findMax $ totalVarSet l1) (findMax $ totalVarSet l2)
+  where n = 1 + max (findMax $ totalVarSet l1) (findMax $ totalVarSet l2)
+
+-- Barendregt numbers
 
 barend :: Int -> Lambda
 barend 0 = combinatorI
 barend n = pair false (barend $ n - 1)
+
 zeroBarend :: Lambda
 zeroBarend = Abst 0 (Appl (Var 0) (Abst 2 (Abst 1 (Var 2))))
+
 succBarend :: Lambda
 succBarend = Abst 11 (Abst 0 (Appl (Appl (Var 0) (Abst 2 (Abst 1 (Var 1)))) (Var 11)))
+
 prevBarend :: Lambda
 prevBarend = Abst 11 (Appl (Var 11) (Abst 0 (Abst 1 (Var 1))))
 
@@ -91,90 +105,104 @@ prevBarend = Abst 11 (Appl (Var 11) (Abst 0 (Abst 1 (Var 1))))
 -- │ Parsing lambda terms │
 -- └──────────────────────┘
 
-tokenize :: String -> [String]
-tokenize [] = []
-tokenize (cur : rest)
-  | null rest = [[cur]]
-  | isAlpha cur = (cur : take n1 rest) : tokenize (drop n1 rest)
-  | cur == '(' = (cur : take n2 rest) : tokenize (drop n2 rest) -- )
-  | cur == '[' = (cur : take n3 rest) : tokenize (drop n3 rest) -- ]
-  | otherwise = [cur] : tokenize rest
-  where
-    findAlpha :: String -> Int
-    findAlpha [] = 0
-    findAlpha (a : as)
-      | a == '(' = 0 -- )
-      | a == '[' = 0 -- ]
-      | isAlpha a = 0
-      | otherwise = 1 + findAlpha as
-    n1 :: Int
-    n1 = findAlpha rest
-    findClosingParen :: String -> Int -> Int
-    findClosingParen [] _ = 0
-    findClosingParen ('(' : rest') step = 1 + findClosingParen rest' (step + 1)
-    findClosingParen (')' : rest') step
-      | step == 0 = 1
-      | otherwise = 1 + findClosingParen rest' (step - 1)
-    findClosingParen (_ : rest') step = 1 + findClosingParen rest' step
-    n2 :: Int
-    n2 = findClosingParen rest 0
-    findClosingBracket :: String -> Int -> Int
-    findClosingBracket [] _ = 0
-    findClosingBracket ('[' : rest') step = 1 + findClosingBracket rest' (step + 1)
-    findClosingBracket (']' : rest') step
-      | step == 0 = 1
-      | otherwise = 1 + findClosingBracket rest' (step - 1)
-    findClosingBracket (_ : rest') step = 1 + findClosingBracket rest' step
-    n3 :: Int
-    n3 = findClosingBracket rest 0
+data Token =
+  VarToken Int |
+  OpenParen | ClosedParen |
+  BackSlash | Dot
 
-preprocess :: String -> String
-preprocess [] = []
-preprocess (',':rest) = '.' : '\\' : preprocess rest
-----------
-preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False False succChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False False prevChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False False addChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False False multChurch ++ ")" ++ preprocess rest
-preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False False expChurch ++ ")" ++ preprocess rest
-----------
-preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroBarend ++ ")" ++ preprocess rest
-preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False False succBarend ++ ")" ++ preprocess rest
-preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False False prevBarend ++ ")" ++ preprocess rest
-preprocess (char:':':rest)
-  | char == 'c' = "(" ++ unparse False False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'b' = "(" ++ unparse False False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'o' = "(" ++ unparse False False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | char == 'O' = "(" ++ unparse False False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
-  | otherwise = preprocess rest
-  where
-    findNumber :: String -> String
-    findNumber [] = []
-    findNumber (char':str)
-      | isDigit char' = char' : findNumber str
-      | otherwise = []
-    strNum :: String
-    strNum = findNumber rest
-    num :: Int
-    num = read $ '0' : strNum
-----------
-preprocess ('f':'a':'l':'s':'e':rest) = preprocess $ 'K' : '*' : rest
-preprocess ('t':'r':'u':'e':rest) = preprocess $ 'K' : rest
-preprocess ('i':'f':' ':rest) = '(' : preprocess rest
-preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
-preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
-----------
-preprocess ('I' : rest) = "(" ++ unparse False False combinatorI ++ ")" ++ preprocess rest
-preprocess ('K' : '*' : rest) = "(" ++ unparse False False combinatorK' ++ ")" ++ preprocess rest
-preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ preprocess rest
-preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
-preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
-preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
-preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
-----------
-preprocess (' ':rest) = preprocess rest
-preprocess (char:str) = char : preprocess str
+tokenize :: String -> [Token]
+tokenize [] = []
+tokenize (c : rest)
+  | isSpace c = tokenize rest
+tokenize ('\\' : rest) = BackSlash : tokenize rest
+tokenize ('.' : rest) = Dot : tokenize rest
+tokenize ('(' : rest) = OpenParen : tokenize rest
+tokenize (')' : rest) = ClosedParen : tokenize rest
+tokenize (c : rest) = undefined
+
+-- tokenize [] = []
+-- tokenize (cur : rest)
+--   | null rest = [[cur]]
+--   | isAlpha cur = (cur : take n1 rest) : tokenize (drop n1 rest)
+--   | cur == '(' = (cur : take n2 rest) : tokenize (drop n2 rest) -- )
+--   | cur == '[' = (cur : take n3 rest) : tokenize (drop n3 rest) -- ]
+--   | otherwise = [cur] : tokenize rest
+--   where
+--     findAlpha :: String -> Int
+--     findAlpha [] = 0
+--     findAlpha (a : as)
+--       | a == '(' = 0 -- )
+--       | a == '[' = 0 -- ]
+--       | isAlpha a = 0
+--       | otherwise = 1 + findAlpha as
+--     n1 :: Int
+--     n1 = findAlpha rest
+--     findClosingParen :: String -> Int -> Int
+--     findClosingParen [] _ = 0
+--     findClosingParen ('(' : rest') step = 1 + findClosingParen rest' (step + 1)
+--     findClosingParen (')' : rest') step
+--       | step == 0 = 1
+--       | otherwise = 1 + findClosingParen rest' (step - 1)
+--     findClosingParen (_ : rest') step = 1 + findClosingParen rest' step
+--     n2 :: Int
+--     n2 = findClosingParen rest 0
+--     findClosingBracket :: String -> Int -> Int
+--     findClosingBracket [] _ = 0
+--     findClosingBracket ('[' : rest') step = 1 + findClosingBracket rest' (step + 1)
+--     findClosingBracket (']' : rest') step
+--       | step == 0 = 1
+--       | otherwise = 1 + findClosingBracket rest' (step - 1)
+--     findClosingBracket (_ : rest') step = 1 + findClosingBracket rest' step
+--     n3 :: Int
+--     n3 = findClosingBracket rest 0
+
+-- preprocess :: String -> String
+-- preprocess [] = []
+-- preprocess (',':rest) = '.' : '\\' : preprocess rest
+-- ----------
+-- preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroChurch ++ ")" ++ preprocess rest
+-- preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False False succChurch ++ ")" ++ preprocess rest
+-- preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False False prevChurch ++ ")" ++ preprocess rest
+-- preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False False addChurch ++ ")" ++ preprocess rest
+-- preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False False multChurch ++ ")" ++ preprocess rest
+-- preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False False expChurch ++ ")" ++ preprocess rest
+-- ----------
+-- preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroBarend ++ ")" ++ preprocess rest
+-- preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False False succBarend ++ ")" ++ preprocess rest
+-- preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False False prevBarend ++ ")" ++ preprocess rest
+-- preprocess (char:':':rest)
+--   | char == 'c' = "(" ++ unparse False False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
+--   | char == 'b' = "(" ++ unparse False False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
+--   | char == 'o' = "(" ++ unparse False False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
+--   | char == 'O' = "(" ++ unparse False False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
+--   | otherwise = preprocess rest
+--   where
+--     findNumber :: String -> String
+--     findNumber [] = []
+--     findNumber (char':str)
+--       | isDigit char' = char' : findNumber str
+--       | otherwise = []
+--     strNum :: String
+--     strNum = findNumber rest
+--     num :: Int
+--     num = read $ '0' : strNum
+-- ----------
+-- preprocess ('f':'a':'l':'s':'e':rest) = preprocess $ 'K' : '*' : rest
+-- preprocess ('t':'r':'u':'e':rest) = preprocess $ 'K' : rest
+-- preprocess ('i':'f':' ':rest) = '(' : preprocess rest
+-- preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
+-- preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
+-- ----------
+-- preprocess ('I' : rest) = "(" ++ unparse False False combinatorI ++ ")" ++ preprocess rest
+-- preprocess ('K' : '*' : rest) = "(" ++ unparse False False combinatorK' ++ ")" ++ preprocess rest
+-- preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ preprocess rest
+-- preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
+-- preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
+-- preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
+-- preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
+-- ----------
+-- preprocess (' ':rest) = preprocess rest
+-- preprocess (char:str) = char : preprocess str
 
 parse :: String -> Maybe Lambda
 parse [] = Nothing
