@@ -74,12 +74,12 @@ modeMap = mapFromList commandList
 -- └────────────────────────────────┘
 
 (>>==) :: (Monad m) => Output a -> (a -> m (Output b)) -> m (Output b)
-(>>==) (Error str trace call) _ = return (Error str trace call)
-(>>==) (Content a) f = f a
+Error str trace call >>== _ = return (Error str trace call)
+Content a >>== f = f a
 
 infixr 9 <.>
 (<.>) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
-(<.>) g f a b = g (f a b)
+(g <.> f) a b = g (f a b)
 
 calibrateLengthPost :: Int -> String -> String
 calibrateLengthPost n str
@@ -170,7 +170,7 @@ withThree ::
   (d -> String) ->
   (String, String) ->
   Bindings -> String -> Action String
-withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
+withThree f readA readB readC showD (prompt1, prompt2) bindings str1 =
   (readA . useBindings bindings) str1 >>== \a -> do
     minput2 <- getColoredInputLine $ getPrompt ' ' prompt1
     mstr2 <- minput2 >>== eval RETURN bindings
@@ -179,7 +179,7 @@ withThree f readA readB readC showC (prompt1, prompt2) bindings str1 =
       minput3 <- getColoredInputLine $ getPrompt ' ' prompt2
       mstr3 <- minput3 >>== eval RETURN bindings
       let mc = mstr3 >>= (readC . useBindings bindings)
-      mc >>== \c -> printLn $ Content (showC $ f a b c)
+      mc >>== \c -> printLn $ Content (showD $ f a b c)
 
 evalOnce :: Mode -> Bindings -> String -> Action String
 evalOnce RETURN = (return . Content) <.> useBindings
