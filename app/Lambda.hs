@@ -7,49 +7,6 @@ import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
 import Data.Set (Set, empty, insert, delete, union, intersection, difference, singleton, findMax, toList, member)
 
-getCombinedTerms :: String -> [String]
-getCombinedTerms [] = []
-getCombinedTerms (var : rest)
-  | null rest = [[var]]
-  | isAlpha var = (var : take n1 rest) : getCombinedTerms (drop n1 rest)
-  | var == '(' = (var : take n2 rest) : getCombinedTerms (drop n2 rest) -- )
-  | var == '[' = (var : take n3 rest) : getCombinedTerms (drop n3 rest) -- ]
-  | otherwise = [var] : getCombinedTerms rest
-  where
-    findAlpha :: String -> Int
-    findAlpha [] = 0
-    findAlpha (a : as)
-      | a == '(' = 0 -- )
-      | a == '[' = 0 -- ]
-      | isAlpha a = 0
-      | otherwise = 1 + findAlpha as
-    n1 :: Int
-    n1 = findAlpha rest
-    findClosingParen :: String -> Int -> Int
-    findClosingParen [] _ = 0
-    findClosingParen ('(' : rest') step = 1 + findClosingParen rest' (step + 1)
-    findClosingParen (')' : rest') step
-      | step == 0 = 1
-      | otherwise = 1 + findClosingParen rest' (step - 1)
-    findClosingParen (_ : rest') step = 1 + findClosingParen rest' step
-    n2 :: Int
-    n2 = findClosingParen rest 0
-    findClosingBracket :: String -> Int -> Int
-    findClosingBracket [] _ = 0
-    findClosingBracket ('[' : rest') step = 1 + findClosingBracket rest' (step + 1)
-    findClosingBracket (']' : rest') step
-      | step == 0 = 1
-      | otherwise = 1 + findClosingBracket rest' (step - 1)
-    findClosingBracket (_ : rest') step = 1 + findClosingBracket rest' step
-    n3 :: Int
-    n3 = findClosingBracket rest 0
-
--- raise :: (Monad m) => (a -> b -> c) -> m a -> m b -> m c
--- raise f ma mb = mb >>= raise' f ma
---   where
---     raise' :: (Monad m) => (a -> b -> c) -> m a -> b -> m c
---     raise' f' ma' b' = fmap (`f'` b') ma'
-
 -- ┌───────────────────────────┐
 -- │ the lambda calculus model │
 -- └───────────────────────────┘
@@ -76,15 +33,13 @@ combinatorK' = Abst 0 (Abst 1 (Var 1))
 false :: Lambda
 false = combinatorK'
 
-combinatorS :: Lambda
+combinatorS :: Lambda -- \x,y,z. xy(xz)
 combinatorS = Abst 0 (Abst 1 (Abst 2 (Appl (Appl (Var 0) (Var 2)) (Appl (Var 1) (Var 2)))))
 
-combinatorY :: Lambda
--- combinatorY = parseJust "\\f.(\\x.f(xx))(\\x.f(xx))"
+combinatorY :: Lambda -- \f. (\x.f(xx)) (\x.f(xx))
 combinatorY = Abst 1 (Appl (Abst 0 (Appl (Var 1) (Appl (Var 0) (Var 0)))) (Abst 0 (Appl (Var 1) (Appl (Var 0) (Var 0)))))
 
-combinatorOmega :: Lambda
--- combinatorOmega = parseJust "(\\x.xx)(\\x.xx)"
+combinatorOmega :: Lambda -- (\x. xx)(\x. xx)
 combinatorOmega = Appl (Abst 0 $ Appl (Var 0) (Var 0)) (Abst 0 $ Appl (Var 0) (Var 0))
 
 combinatorNeg :: Lambda
@@ -99,7 +54,7 @@ omegaSmall :: Int -> Lambda
 omegaSmall n = Abst 0 (power n (Var 0))
 
 omegaBig :: Int -> Lambda
-omegaBig n = Appl (omegaSmall n) (omegaSmall n)
+omegaBig n = let on = omegaSmall n in Appl on on
 
 church :: Int -> Lambda
 church 0 = adjustBoundVars $ Abst 0 (Abst 1 (Var 1))
@@ -135,6 +90,43 @@ prevBarend = Abst 11 (Appl (Var 11) (Abst 0 (Abst 1 (Var 1))))
 -- ┌──────────────────────┐
 -- │ Parsing lambda terms │
 -- └──────────────────────┘
+
+tokenize :: String -> [String]
+tokenize [] = []
+tokenize (cur : rest)
+  | null rest = [[cur]]
+  | isAlpha cur = (cur : take n1 rest) : tokenize (drop n1 rest)
+  | cur == '(' = (cur : take n2 rest) : tokenize (drop n2 rest) -- )
+  | cur == '[' = (cur : take n3 rest) : tokenize (drop n3 rest) -- ]
+  | otherwise = [cur] : tokenize rest
+  where
+    findAlpha :: String -> Int
+    findAlpha [] = 0
+    findAlpha (a : as)
+      | a == '(' = 0 -- )
+      | a == '[' = 0 -- ]
+      | isAlpha a = 0
+      | otherwise = 1 + findAlpha as
+    n1 :: Int
+    n1 = findAlpha rest
+    findClosingParen :: String -> Int -> Int
+    findClosingParen [] _ = 0
+    findClosingParen ('(' : rest') step = 1 + findClosingParen rest' (step + 1)
+    findClosingParen (')' : rest') step
+      | step == 0 = 1
+      | otherwise = 1 + findClosingParen rest' (step - 1)
+    findClosingParen (_ : rest') step = 1 + findClosingParen rest' step
+    n2 :: Int
+    n2 = findClosingParen rest 0
+    findClosingBracket :: String -> Int -> Int
+    findClosingBracket [] _ = 0
+    findClosingBracket ('[' : rest') step = 1 + findClosingBracket rest' (step + 1)
+    findClosingBracket (']' : rest') step
+      | step == 0 = 1
+      | otherwise = 1 + findClosingBracket rest' (step - 1)
+    findClosingBracket (_ : rest') step = 1 + findClosingBracket rest' step
+    n3 :: Int
+    n3 = findClosingBracket rest 0
 
 preprocess :: String -> String
 preprocess [] = []
@@ -205,11 +197,11 @@ parse ('\\' : 'v' : char : rest)
      in liftA2 Abst var (rest' >>= parse')
 parse ('\\' : var : '.' : rest) = liftA2 Abst (elemIndex var varSet) (parse rest)
 parse str
-  | length objects > 1 = liftA2 Appl (parse $ join (init objects)) (parse $ last objects)
-  | head object == '(' = parse (init . tail $ object)
+  | length tokens > 1 = liftA2 Appl (parse $ join (init tokens)) (parse $ last tokens)
+  | head token == '(' = parse (init . tail $ token)
   where
-    objects = getCombinedTerms str
-    object = head objects
+    tokens = tokenize str
+    token = head tokens
 parse ('[':rest) = liftA2 pair (parse s1) (parse s2)
   where
     (s1, rest') = splitAt (findSemicolon rest) rest
@@ -226,9 +218,6 @@ parse ('[':rest) = liftA2 pair (parse s1) (parse s2)
       | otherwise = 1 + findClosingBracket str (step - 1)
     findClosingBracket (_ : str) step = 1 + findClosingBracket str step
 parse _ = Nothing
-
--- parseJust :: String -> Lambda
--- parseJust = fromJust . parse
 
 wrapAbst :: (Lambda -> String) -> Lambda -> String
 wrapAbst f l = case f l of
