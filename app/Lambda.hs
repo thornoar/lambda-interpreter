@@ -1,7 +1,7 @@
 module Lambda where
 
-import Control.Monad
-import Data.Char (isAlpha, isDigit, isSpace)
+-- import Control.Monad
+import Data.Char (isAlpha, isDigit, isSpace, isNumber)
 import Data.List (elemIndex, intercalate)
 import Data.Maybe (fromJust, isJust)
 import Text.Read (readMaybe)
@@ -102,157 +102,150 @@ prevBarend :: Lambda
 prevBarend = Abst 11 (Appl (Var 11) (Abst 0 (Abst 1 (Var 1))))
 
 -- ┌──────────────────────┐
--- │ Parsing lambda terms │
+-- │ parsing lambda terms │
 -- └──────────────────────┘
 
-data Token =
-  VarToken Int |
-  OpenParen | ClosedParen |
-  BackSlash | Dot
+preprocess :: String -> String
+preprocess [] = []
+preprocess (',':rest) = '.' : '\\' : preprocess rest
+----------
+preprocess ('c':':':'Z':'e':'r':'o':rest) = "#cz#" ++ preprocess rest
+preprocess ('c':':':'S':'+':rest) = "#cs#" ++ preprocess rest
+preprocess ('c':':':'P':'-':rest) = "#cp#" ++ preprocess rest
+preprocess ('c':':':'A':'d':'d':rest) = "#ca#" ++ preprocess rest
+preprocess ('c':':':'M':'u':'l':'t':rest) = "#cm#" ++ preprocess rest
+preprocess ('c':':':'E':'x':'p':rest) = "#ce#" ++ preprocess rest
+----------
+preprocess ('b':':':'Z':'e':'r':'o':rest) = "#bz#" ++ preprocess rest
+preprocess ('b':':':'S':'+':rest) = "#bs#" ++ preprocess rest
+preprocess ('b':':':'P':'-':rest) = "#bp#" ++ preprocess rest
+preprocess (c:':':rest) = let (num, rest') = takeWhile' False isNumber rest in "#" ++ [c] ++ ":" ++ num ++ "#" ++ preprocess rest'
+----------
+preprocess ('f':'a':'l':'s':'e':rest) = "#F#" ++ preprocess rest
+preprocess ('t':'r':'u':'e':rest) = "#T#" ++ preprocess rest
+preprocess ('i':'f':' ':rest) = '(' : preprocess rest
+preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
+preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
+----------
+preprocess ('I' : rest) = "#I#" ++ preprocess rest
+preprocess ('K' : '*' : rest) = "#F#" ++ preprocess rest
+preprocess ('K' : rest) = "#T#" ++ preprocess rest
+preprocess ('F' : rest) = "#F#" ++ preprocess rest
+preprocess ('T' : rest) = "#T#" ++ preprocess rest
+preprocess ('S' : rest) = "#S#" ++ preprocess rest
+preprocess ('Y' : rest) = "#Y#" ++ preprocess rest
+preprocess ('O' : rest) = "#O#" ++ preprocess rest
+preprocess ('N' : rest) = "#N#" ++ preprocess rest
+----------
+preprocess (char:str) = char : preprocess str
 
-tokenize :: String -> [Token]
-tokenize [] = []
+data Output a = Content a | Error String String deriving (Show, Read, Eq)
+instance Functor Output where
+  fmap f oa = case oa of
+    Error str trace -> Error str trace
+    Content a -> Content (f a)
+instance Applicative Output where
+  pure = Content
+  mf <*> ma = case mf of
+    Error str trace -> Error str trace
+    Content f -> fmap f ma
+instance Monad Output where
+  return = pure
+  mval >>= f = case mval of
+    Error str trace -> Error str trace
+    Content a -> f a
+
+wrap :: String -> String -> Maybe a -> Output a
+wrap _ _ (Just x) = Content x
+wrap msg trace Nothing = Error msg trace
+
+data Token = VarToken Int | NamedExpr String | BackSlash | Dot | Grouped [Token] deriving (Show, Read, Eq)
+
+(<:>) :: (Monad m) => a -> m [a] -> m [a]
+(<:>) x = fmap (x :)
+infixr 5 <:>
+
+takeWhile' :: Bool -> (a -> Bool) -> [a] -> ([a], [a])
+takeWhile' _ _ [] = ([], [])
+takeWhile' drp test (x : rest)
+  | test x = let (l, r) = takeWhile' drp test rest in (x : l, r)
+  | otherwise = ([], if drp then rest else x : rest)
+
+findMatching :: Eq a => Int -> a -> a -> [a] -> Output ([a], [a])
+findMatching _ _ _ [] = Error "Unbalanced parentheses" []
+findMatching n op cl (c : rest)
+  | c == cl = if n == 0 then Content ([], rest) else do
+      (l, r) <- findMatching (n-1) op cl rest
+      return (c : l, r)
+  | c == op = do
+      (l, r) <- findMatching (n+1) op cl rest
+      return (c : l, r)
+  | otherwise = do
+      (l, r) <- findMatching n op cl rest
+      return (c : l, r)
+
+tokenize :: String -> Output [Token]
+tokenize [] = Content []
 tokenize (c : rest)
   | isSpace c = tokenize rest
-tokenize ('\\' : rest) = BackSlash : tokenize rest
-tokenize ('.' : rest) = Dot : tokenize rest
-tokenize ('(' : rest) = OpenParen : tokenize rest
-tokenize (')' : rest) = ClosedParen : tokenize rest
-tokenize (c : rest) = undefined
+tokenize ('\\' : rest) = BackSlash <:> tokenize rest
+tokenize ('.' : rest) = Dot <:> tokenize rest
+tokenize ('(' : rest) = do -- )
+  (str, rest') <- findMatching 0 '(' ')' rest
+  grouped <- Grouped <$> tokenize str
+  grouped <:> tokenize rest'
+tokenize ('v' : rest) = case takeWhile' False isNumber rest of
+  ([], _) -> Error "The `v` character must be followed by a number" []
+  (num, rest') ->
+    wrap "Could not read number" num (readMaybe num)
+    >>= \n -> VarToken n <:> tokenize rest'
+tokenize ('#' : rest) = let (str, rest') = takeWhile' True (/= '#') rest in NamedExpr str <:> tokenize rest'
+tokenize (c : rest) =
+  (wrap "cannot find in the variable set" [c] (elemIndex c varSet))
+  >>= \n -> VarToken n <:> tokenize rest
 
--- tokenize [] = []
--- tokenize (cur : rest)
---   | null rest = [[cur]]
---   | isAlpha cur = (cur : take n1 rest) : tokenize (drop n1 rest)
---   | cur == '(' = (cur : take n2 rest) : tokenize (drop n2 rest) -- )
---   | cur == '[' = (cur : take n3 rest) : tokenize (drop n3 rest) -- ]
---   | otherwise = [cur] : tokenize rest
---   where
---     findAlpha :: String -> Int
---     findAlpha [] = 0
---     findAlpha (a : as)
---       | a == '(' = 0 -- )
---       | a == '[' = 0 -- ]
---       | isAlpha a = 0
---       | otherwise = 1 + findAlpha as
---     n1 :: Int
---     n1 = findAlpha rest
---     findClosingParen :: String -> Int -> Int
---     findClosingParen [] _ = 0
---     findClosingParen ('(' : rest') step = 1 + findClosingParen rest' (step + 1)
---     findClosingParen (')' : rest') step
---       | step == 0 = 1
---       | otherwise = 1 + findClosingParen rest' (step - 1)
---     findClosingParen (_ : rest') step = 1 + findClosingParen rest' step
---     n2 :: Int
---     n2 = findClosingParen rest 0
---     findClosingBracket :: String -> Int -> Int
---     findClosingBracket [] _ = 0
---     findClosingBracket ('[' : rest') step = 1 + findClosingBracket rest' (step + 1)
---     findClosingBracket (']' : rest') step
---       | step == 0 = 1
---       | otherwise = 1 + findClosingBracket rest' (step - 1)
---     findClosingBracket (_ : rest') step = 1 + findClosingBracket rest' step
---     n3 :: Int
---     n3 = findClosingBracket rest 0
+parse :: [Token] -> Output Lambda
+parse [VarToken n] = Content (Var n)
+parse [NamedExpr str] = case str of
+  "cz" -> Content zeroChurch
+  "cs" -> Content succChurch
+  "cp" -> Content prevChurch
+  "ca" -> Content addChurch
+  "cm" -> Content multChurch
+  "ce" -> Content expChurch
+  "bz" -> Content zeroBarend
+  "bs" -> Content succBarend
+  "bp" -> Content prevBarend
+  (c : ':' : num) -> wrap "failed to parse number" num (readMaybe num) >>= \n -> case c of
+    'c' -> Content (church n)
+    'b' -> Content (barend n)
+    'o' -> Content (omegaSmall n)
+    'O' -> Content (omegaBig n)
+    _ -> Error "unrecornized combinator" [c]
+  ['I'] -> Content combinatorI
+  ['F'] -> Content combinatorK'
+  ['T'] -> Content combinatorK
+  ['S'] -> Content combinatorS
+  ['Y'] -> Content combinatorY
+  ['O'] -> Content combinatorOmega
+  ['N'] -> Content combinatorNeg
+  _ -> Error "unregognized named expression" str
+parse [Grouped tks] = parse tks
+parse [t1, t2] = liftA2 Appl (parse [t1]) (parse [t2])
+parse (BackSlash : VarToken n : Dot : rest) = fmap (Abst n) (parse rest)
+parse (t1 : t2 : rest) = parse (Grouped [t1, t2] : rest)
+parse [] = Error "cannot parse an empty expression" []
+parse (t : _) = Error "invalid syntax at token" (show t)
 
--- preprocess :: String -> String
--- preprocess [] = []
--- preprocess (',':rest) = '.' : '\\' : preprocess rest
--- ----------
--- preprocess ('c':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroChurch ++ ")" ++ preprocess rest
--- preprocess ('c':':':'S':'+':rest) = "(" ++ unparse False False succChurch ++ ")" ++ preprocess rest
--- preprocess ('c':':':'P':'-':rest) = "(" ++ unparse False False prevChurch ++ ")" ++ preprocess rest
--- preprocess ('c':':':'A':'d':'d':rest) = "(" ++ unparse False False addChurch ++ ")" ++ preprocess rest
--- preprocess ('c':':':'M':'u':'l':'t':rest) = "(" ++ unparse False False multChurch ++ ")" ++ preprocess rest
--- preprocess ('c':':':'E':'x':'p':rest) = "(" ++ unparse False False expChurch ++ ")" ++ preprocess rest
--- ----------
--- preprocess ('b':':':'Z':'e':'r':'o':rest) = "(" ++ unparse False False zeroBarend ++ ")" ++ preprocess rest
--- preprocess ('b':':':'S':'+':rest) = "(" ++ unparse False False succBarend ++ ")" ++ preprocess rest
--- preprocess ('b':':':'P':'-':rest) = "(" ++ unparse False False prevBarend ++ ")" ++ preprocess rest
--- preprocess (char:':':rest)
---   | char == 'c' = "(" ++ unparse False False (church num) ++ ")" ++ preprocess (drop (length strNum) rest)
---   | char == 'b' = "(" ++ unparse False False (barend num) ++ ")" ++ preprocess (drop (length strNum) rest)
---   | char == 'o' = "(" ++ unparse False False (omegaSmall num) ++ ")" ++ preprocess (drop (length strNum) rest)
---   | char == 'O' = "(" ++ unparse False False (omegaBig num) ++ ")" ++ preprocess (drop (length strNum) rest)
---   | otherwise = preprocess rest
---   where
---     findNumber :: String -> String
---     findNumber [] = []
---     findNumber (char':str)
---       | isDigit char' = char' : findNumber str
---       | otherwise = []
---     strNum :: String
---     strNum = findNumber rest
---     num :: Int
---     num = read $ '0' : strNum
--- ----------
--- preprocess ('f':'a':'l':'s':'e':rest) = preprocess $ 'K' : '*' : rest
--- preprocess ('t':'r':'u':'e':rest) = preprocess $ 'K' : rest
--- preprocess ('i':'f':' ':rest) = '(' : preprocess rest
--- preprocess (' ':'t':'h':'e':'n':' ':rest) = ')' : preprocess rest
--- preprocess (' ':'e':'l':'s':'e':rest) = preprocess rest
--- ----------
--- preprocess ('I' : rest) = "(" ++ unparse False False combinatorI ++ ")" ++ preprocess rest
--- preprocess ('K' : '*' : rest) = "(" ++ unparse False False combinatorK' ++ ")" ++ preprocess rest
--- preprocess ('K' : rest) = "(" ++ unparse False False combinatorK ++ ")" ++ preprocess rest
--- preprocess ('S' : rest) = "(" ++ unparse False False combinatorS ++ ")" ++ preprocess rest
--- preprocess ('Y' : rest) = "(" ++ unparse False False combinatorY ++ ")" ++ preprocess rest
--- preprocess ('O' : rest) = "(" ++ unparse False False combinatorOmega ++ ")" ++ preprocess rest
--- preprocess ('N' : rest) = "(" ++ unparse False False combinatorNeg ++ ")" ++ preprocess rest
--- ----------
--- preprocess (' ':rest) = preprocess rest
--- preprocess (char:str) = char : preprocess str
+fullParse :: String -> Output Lambda
+fullParse str = tokenize (preprocess str) >>= \tks -> parse tks
 
-parse :: String -> Maybe Lambda
-parse [] = Nothing
-parse ('v' : rest)
-  | isJust num =  fmap Var num
-  where
-    num :: Maybe Int
-    num = readMaybe rest
-parse [var]
-  | var `elem` varSet = Just $ Var (fromJust $ elemIndex var varSet)
-  | otherwise = Nothing
-parse ('\\' : 'v' : char : rest)
-  | isDigit char =
-    let f :: String -> String -> (Maybe String, Maybe String)
-        f _ [] = (Nothing, Nothing)
-        f acc ('.':rest'') = (Just acc, Just rest'')
-        f acc (char':rest'') = f (acc ++ [char']) rest''
-        (numStr, rest') = f [] (char:rest)
-        var = numStr >>= readMaybe
-     in liftA2 Abst var (rest' >>= parse')
-parse ('\\' : var : '.' : rest) = liftA2 Abst (elemIndex var varSet) (parse rest)
-parse str
-  | length tokens > 1 = liftA2 Appl (parse $ join (init tokens)) (parse $ last tokens)
-  | head token == '(' = parse (init . tail $ token)
-  where
-    tokens = tokenize str
-    token = head tokens
-parse ('[':rest) = liftA2 pair (parse s1) (parse s2)
-  where
-    (s1, rest') = splitAt (findSemicolon rest) rest
-    (s2, _) = splitAt (findClosingBracket (tail rest') 0) (tail rest')
-    findSemicolon :: String -> Int
-    findSemicolon [] = 0
-    findSemicolon (';':_) = 0
-    findSemicolon (_:rest'') = 1 + findSemicolon rest''
-    findClosingBracket :: String -> Int -> Int
-    findClosingBracket [] _ = 0
-    findClosingBracket ('[' : str) step = 1 + findClosingBracket str (step + 1)
-    findClosingBracket (']' : str) step
-      | step == 0 = 0
-      | otherwise = 1 + findClosingBracket str (step - 1)
-    findClosingBracket (_ : str) step = 1 + findClosingBracket str step
-parse _ = Nothing
-
-wrapAbst :: (Lambda -> String) -> Lambda -> String
-wrapAbst f l = case f l of
-  [a] -> [a]
-  str -> case l of
-    Abst _ _ -> "(" ++ str ++ ")"
-    _ -> str
+-- wrapAbst :: (Lambda -> String) -> Lambda -> String
+-- wrapAbst f l = case f l of
+--   [a] -> [a]
+--   str -> case l of
+--     Abst _ _ -> "(" ++ str ++ ")"
+--     _ -> str
 
 wrapNotSingle :: String -> String
 wrapNotSingle [a] = [a]
@@ -281,9 +274,8 @@ recognizeBarend l
 
 getVarName :: Bool -> Variable -> String
 getVarName sugar n
-  | n < length varSet = [varSet !! n]
-  | sugar = 'v' : show n
-  | otherwise = varSetFormal !! n
+  | sugar && n < length varSet = [varSet !! n]
+  | otherwise = 'v' : show n
 
 unparse :: Bool -> Bool -> Lambda -> String
 unparse _ True l
@@ -343,12 +335,6 @@ isValid (Appl l1 l2) =
     bv1 = boundVarSet l1
     fv2 = freeVarSet l2
     bv2 = boundVarSet l2
-
-parse' :: String -> Maybe Lambda
-parse' str = adjustBoundVars <$> parse (preprocess str)
-
-parseJust' :: String -> Lambda
-parseJust' = fromJust . parse'
 
 -- ┌────────────────────────────┐
 -- │ lambda term transformation │
